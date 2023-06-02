@@ -1,0 +1,14 @@
+__pycache__/
+.ipynb_checkpoints/
+runs/
+results/
+logs/
+data/
+*.ipynb
+hard_attn_results/
+hard_attn_logs/
+pretrained_resnet_models/
+*pdf
+*.npy
+*.png
+*.pkl
