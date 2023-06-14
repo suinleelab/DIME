@@ -11,8 +11,8 @@ import sys
 sys.path.append('../')
 from data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split, get_mlp_network
 sys.path.append('../../')
-from models.base_model import BaseModel
-from models.masking_pretrainer import MaskingPretrainer
+from baseline_models.base_model import BaseModel
+from dime.masking_pretrainer import MaskingPretrainer
 from utils import accuracy, auc, normalize, StaticMaskLayer1d, MaskLayer, ConcreteMask, get_confidence
 from torchvision import transforms
 from torchmetrics import Accuracy

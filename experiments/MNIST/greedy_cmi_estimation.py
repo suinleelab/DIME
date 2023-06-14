@@ -8,7 +8,7 @@ from torchvision.datasets import MNIST
 from sklearn.metrics import accuracy_score
 import sys
 sys.path.append('../../')
-from models.greedy_models import MaskingPretrainer, GreedyCMIEstimator
+from dime.greedy_models import MaskingPretrainer, GreedyCMIEstimator
 from utils import MaskLayer, accuracy, generate_2d_gaussion_cost, generate_pixel_based_cost, selection_with_lamda, selection_without_lamda
 from torch.utils.data import DataLoader
 import os.path

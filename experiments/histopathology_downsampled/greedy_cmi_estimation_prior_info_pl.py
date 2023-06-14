@@ -1,3 +1,5 @@
+# PyTorch lightning version
+
 import torch
 import pickle
 import argparse
@@ -5,22 +7,25 @@ import numpy as np
 import torch.nn as nn
 from torchmetrics import AUROC
 from sklearn.metrics import accuracy_score
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 import os
 from fastai.vision.all import untar_data, URLs
 import pandas as pd
 import sys
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.loggers import TensorBoardLogger
 sys.path.append('../')
 from data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledDataset, HistopathologyDownsampledEdgeDataset
 sys.path.append('../../')
-from models.masking_pretrainer import MaskingPretrainer
-from models.greedy_models import GreedyCMIEstimator
+from dime.masking_pretrainer_prior_info import MaskingPretrainerPriorInfo#, GreedyCMIEstimator
+from dime.greedy_model_prior_info_pl import GreedyCMIEstimatorPLPriorInfo
 # from models.resnet import ResNet18Backbone, ResNet18ClassifierHead, ResNet18CMIPredictorHead
 from utils import accuracy, auc, normalize
-from models.vit import PredictorViT, ValueNetworViT, PredictorSemiSupervisedVit, ValueNetworkSemiSupervisedVit
-from models.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
+from dime.vit import PredictorSemiSupervisedVit, ValueNetworkSemiSupervisedVit
+from dime.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
 # from models.vit import vit_tiny_patch16_224
 import timm
 
@@ -38,10 +43,6 @@ parser.add_argument('--mask_width', type=int,
                                 default=14, 
                                 choices=[7, 14], 
                                 help="Mask width to use in the mask layer")
-parser.add_argument('--backbone', type=str, 
-                                default='vit', 
-                                choices=['vit', 'resnet', 'vit_semi_supervised'], 
-                                help="Backbone used to train the network")
 parser.add_argument('--lr', type=float, 
                                 default=1e-5, 
                                 help="Learning rate used train the network")
@@ -56,7 +57,6 @@ if __name__ == '__main__':
     mask_type = args.mask_type
     image_size = 224
     mask_width = args.mask_width
-    network_type = args.backbone
     pretrained_model_name = args.pretrained_model_name
     lr = args.lr
     if lr == 1e-3:
@@ -64,17 +64,12 @@ if __name__ == '__main__':
     else:
         min_lr = 1e-8
 
-    if (network_type == 'vit' and pretrained_model_name not in vit_model_options) \
-        or (network_type == 'resnet' and pretrained_model_name not in resnet_model_options):
-        raise argparse.ArgumentError("Network type and model name are not compatible")
-
     if mask_type == 'gaussian':
         mask_layer = MaskLayerGaussian(append=False, mask_width=mask_width, patch_size=image_size/mask_width, sigma=1)
     else:
         mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         
     device = torch.device('cuda', args.gpu)
-
     norm_constants = ((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
 
     # Setup for data loading.
@@ -82,18 +77,18 @@ if __name__ == '__main__':
         transforms.RandomResizedCrop(image_size),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize(*norm_constants),
+        transforms.Normalize(*norm_constants)
     ])
 
     transforms_test = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(image_size),
         transforms.ToTensor(),
-        transforms.Normalize(*norm_constants),
+        transforms.Normalize(*norm_constants)
     ])
 
-    data_dir = '/projects/<labname>/<username>/hist_data/mhist/'
-    semi_supervised = False
+    data_dir = '/projects/<labname>/<username>/hist_data/MHIST/'
+
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')
     train_dataset = HistopathologyDownsampledEdgeDataset(data_dir + 'images/', df.loc[df['Partition'] == 'train'], transforms_train)
@@ -114,33 +109,19 @@ if __name__ == '__main__':
                             drop_last=True, num_workers=4)
     val_dataloader = DataLoader(val_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
     test_dataloader = DataLoader(test_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
-    
+
     # Make results directory.
     if not os.path.exists('results'):
         os.makedirs('results')
-    
-    if network_type == 'vit':
-        backbone = timm.create_model(pretrained_model_name, pretrained=True)
-        predictor =  PredictorViT(backbone, num_classes=2)
-        value_network = ValueNetworViT(backbone, mask_width=mask_width)
-    elif network_type == 'vit_semi_supervised':
-        # Incorporate prior information using sketch (Canny edge image)
-        backbone1 = timm.create_model(pretrained_model_name, pretrained=True)
-        semi_supervised = True
-        predictor =  PredictorSemiSupervisedVit(backbone1, backbone1, num_classes=2)
-        value_network = ValueNetworkSemiSupervisedVit(backbone1, backbone1, use_entropy=True)
-    else:
-        # Set up networks.
-        backbone, expansion = ResNet18Backbone(eval(pretrained_model_name + '(pretrained=True)'))
-        print(expansion)
-        predictor =  Predictor(backbone, expansion, num_classes=2)
-        block_layer_stride = 1
-        if mask_width == 14:
-            block_layer_stride = 0.5
-        
-        value_network = ValueNetwork(backbone, expansion, block_layer_stride=block_layer_stride)
 
-    trained_predictor_name = f"{pretrained_model_name}_predictor_without_sketch_may_4.pth"
+    # Incorporate prior information using sketch (Canny edge image)
+    backbone1 = timm.create_model(pretrained_model_name, pretrained=True)
+    backbone2 = timm.create_model(pretrained_model_name, pretrained=True)
+
+    predictor =  PredictorSemiSupervisedVit(backbone1, backbone2, num_classes=2)
+    value_network = ValueNetworkSemiSupervisedVit(backbone1, backbone2, use_entropy=True)
+
+    trained_predictor_name = f"{pretrained_model_name}_prior_info_individual_backbone_predictor_lr_{str(lr)}_use_entropy_may_7.pth"
     if os.path.exists(f"results/{trained_predictor_name}"):
         # Load pretrained predictor
         print("Loading Pretrained Predictor")
@@ -149,7 +130,7 @@ if __name__ == '__main__':
     else:
         # Pretrain predictor
         print("Pretraining Predictor")
-        pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
+        pretrain = MaskingPretrainerPriorInfo(predictor, mask_layer).to(device)
         pretrain.fit(train_dataset,
                      val_dataset,
                      mbsize=mbsize,
@@ -161,28 +142,40 @@ if __name__ == '__main__':
                      val_loss_mode='max',
                      patience=5,
                      verbose=True,
-                     trained_predictor_name=trained_predictor_name,
-                     semi_supervised=semi_supervised)
+                     trained_predictor_name=trained_predictor_name)
 
-    run_description = f"max_features_100_{pretrained_model_name}_lr_{str(lr)}_without_sketch_may_4"
+    run_description = f"max_features_60_{pretrained_model_name}_lr_{str(lr)}_prior_info_individual_backbone_use_entropy_may_7"
+    logger = TensorBoardLogger("logs", name=f"{run_description}")
+    checkpoint_callback = best_hard_callback = ModelCheckpoint(
+                save_top_k=1,
+                monitor='Performance_Val',
+                mode='max',
+                filename='best_val_perfomance_model',
+                verbose=False
+            )
 
     # Jointly train predictor and value networks
-    greedy_cmi_estimator = GreedyCMIEstimator(value_network, predictor, mask_layer).to(device)
-    greedy_cmi_estimator.fit(train_dataloader, 
-                            val_dataloader,
-                            lr=lr,
-                            min_lr=min_lr,
-                            nepochs=250,
-                            max_features=100,
-                            eps=0.05,
-                            loss_fn=nn.CrossEntropyLoss(reduction='none'),
-                            val_loss_fn=auc,
-                            tensorboard_file_name_suffix=run_description,
-                            eps_decay=True,
-                            eps_decay_rate=0.2,
-                            patience=3,
-                            feature_costs=None,
-                            use_entropy=True,
-                            semi_supervised=semi_supervised)
-
+    greedy_cmi_estimator = GreedyCMIEstimatorPLPriorInfo(value_network, predictor, mask_layer,
+                                    lr=lr,
+                                    min_lr=min_lr,
+                                    max_features=60,
+                                    eps=0.05,
+                                    loss_fn=nn.CrossEntropyLoss(reduction='none'),
+                                    val_loss_fn=auc,
+                                    eps_decay=True,
+                                    eps_decay_rate=0.2,
+                                    patience=3,
+                                    feature_costs=None,
+                                    use_entropy=True)
     
+    trainer = Trainer(
+                accelerator='gpu',
+                devices=[args.gpu],
+                max_epochs=250,
+                precision=16,
+                logger=logger,
+                num_sanity_val_steps=0,
+                callbacks=[checkpoint_callback]
+            )
+
+    trainer.fit(greedy_cmi_estimator, train_dataloader, val_dataloader)

@@ -13,10 +13,10 @@ import sys
 sys.path.append('../')
 from data_utils import MaskLayer2d, get_mlp_network, HistopathologyDownsampledDataset
 sys.path.append('../../')
-from models.vit import PredictorViT, SelectorViT
-from models.base_model import BaseModel
-from models.hard_attention_model import HardAttention
-from models.masking_pretrainer import MaskingPretrainer
+from dime.vit import PredictorViT, SelectorViT
+from baseline_models.base_model import BaseModel
+from baseline_models.hard_attention_model import HardAttention
+from dime.masking_pretrainer import MaskingPretrainer
 from utils import accuracy, auc, normalize, StaticMaskLayer2d, ConcreteMask2d
 from baselines import cae, hardattention, dfs
 from torchvision import transforms

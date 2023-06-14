@@ -14,12 +14,12 @@ import sys
 sys.path.append('../')
 from data_utils import MaskLayerGaussian, MaskLayer2d
 sys.path.append('../../')
-from models.greedy_models import GreedyCMIEstimator
-from models.masking_pretrainer import MaskingPretrainer
+from dime.greedy_models import GreedyCMIEstimator
+from dime.masking_pretrainer import MaskingPretrainer
 # from models.resnet import ResNet18Backbone, ResNet18ClassifierHead, ResNet18CMIPredictorHead
 from utils import accuracy, auc, normalize
-from models.vit import PredictorViT, ValueNetworViT
-from models.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
+from dime.vit import PredictorViT, ValueNetworViT
+from dime.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
 # from models.vit import vit_tiny_patch16_224
 import timm
 

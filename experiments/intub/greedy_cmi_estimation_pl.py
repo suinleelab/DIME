@@ -13,8 +13,8 @@ import feature_groups
 sys.path.append('../')
 from data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split
 sys.path.append('../../')
-from models.masking_pretrainer import MaskingPretrainer#, GreedyCMIEstimator
-from models.greedy_model_pl import GreedyCMIEstimatorPL
+from dime.masking_pretrainer import MaskingPretrainer#, GreedyCMIEstimator
+from dime.greedy_model_pl import GreedyCMIEstimatorPL
 from utils import accuracy, auc, normalize
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint

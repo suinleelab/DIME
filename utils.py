@@ -7,7 +7,6 @@ import numpy as np
 from torch.nn import functional as F
 import math
 
-
 def restore_parameters(model, best_model):
     '''Move parameters from best model to current model.'''
     for param, best_param in zip(model.parameters(), best_model.parameters()):

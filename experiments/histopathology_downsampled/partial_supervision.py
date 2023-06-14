@@ -16,13 +16,13 @@ import sys
 sys.path.append('../')
 from data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledDataset, HistopathologyDownsampledEdgeDataset
 sys.path.append('../../')
-from models.masking_pretrainer import MaskingPretrainer
-from models.greedy_models import GreedyCMIEstimator
-from models.sketch_supervision_predictor import SketchSupervisionPredictor
+from dime.masking_pretrainer import MaskingPretrainer
+from dime.greedy_models import GreedyCMIEstimator
+from dime.sketch_supervision_predictor import SketchSupervisionPredictor
 from utils import accuracy, auc, normalize
-from models.vit import PredictorViT, ValueNetworViT, PredictorSemiSupervisedVit, ValueNetworkSemiSupervisedVit
-from models.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
-# from models.vit import vit_tiny_patch16_224
+from dime.vit import PredictorViT, ValueNetworViT, PredictorSemiSupervisedVit, ValueNetworkSemiSupervisedVit
+from dime.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
+# from dime.vit import vit_tiny_patch16_224
 import timm
 
 # Set up command line arguments
@@ -79,7 +79,6 @@ if __name__ == '__main__':
 
     data_dir = '/projects/<labname>/<username>/hist_data/mhist/'
 
-    semi_supervised = False
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')
     train_dataset = HistopathologyDownsampledEdgeDataset(data_dir + 'images/', df.loc[df['Partition'] == 'train'], transforms_train)
@@ -132,8 +131,7 @@ if __name__ == '__main__':
                      val_loss_mode='max',
                      patience=5,
                      verbose=True,
-                     trained_predictor_name=trained_predictor_name,
-                     semi_supervised=False)
+                     trained_predictor_name=trained_predictor_name)
 
     run_description = f"max_features_100_{pretrained_model_name}_lr_{str(lr)}_sketch_in_predictor_use_entropy_{mask_type}_mask_width_{mask_width}"
 
@@ -152,8 +150,7 @@ if __name__ == '__main__':
                             eps_decay_rate=0.2,
                             patience=3,
                             feature_costs=None,
-                            use_entropy=True,
-                            semi_supervised=False)
+                            use_entropy=True)
     
     predictor.load_state_dict(torch.load(f"results/predictor_trained_{run_description}.pth"))
     value_network.load_state_dict(torch.load(f"results/value_network_trained_{run_description}.pth"))

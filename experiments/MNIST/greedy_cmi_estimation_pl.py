@@ -11,8 +11,8 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 sys.path.append('../../')
-from models.masking_pretrainer import MaskingPretrainer
-from models.greedy_model_pl import GreedyCMIEstimatorPL
+from dime.masking_pretrainer import MaskingPretrainer
+from dime.greedy_model_pl import GreedyCMIEstimatorPL
 from utils import MaskLayer, accuracy, generate_2d_gaussion_cost, generate_pixel_based_cost, selection_with_lamda, selection_without_lamda
 from torch.utils.data import DataLoader
 import os.path
@@ -126,8 +126,7 @@ if __name__ == '__main__':
                                         eps_decay_rate=0.2,
                                         patience=5,
                                         feature_costs=None,
-                                        use_entropy=True,
-                                        semi_supervised=False)
+                                        use_entropy=True)
 
         # Set up data loaders.
         train_dataloader = DataLoader(

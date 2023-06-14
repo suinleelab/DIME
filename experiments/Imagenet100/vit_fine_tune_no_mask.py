@@ -15,7 +15,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-from models.resnet_imagenet import resnet18
+from dime.resnet_imagenet import resnet18
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0)

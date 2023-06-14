@@ -17,7 +17,7 @@ def ind_to_onehot(inds, n):
     onehot[torch.arange(len(inds)), inds] = 1
     return onehot
 
-class GreedyCMIEstimatorPL(pl.LightningModule):
+class GreedyCMIEstimatorPLPriorInfo(pl.LightningModule):
     def __init__(self, value_network, predictor, mask_layer,
             lr,
             max_features,
@@ -35,8 +35,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             eps_decay=False,
             feature_costs=None,
             lamda=None,
-            use_entropy=True,
-            semi_supervised=False):
+            use_entropy=True):
 
             super().__init__()
 
@@ -70,8 +69,6 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             self.mse_loss_fn = torch.nn.MSELoss(reduction='none')
             self.automatic_optimization = False
 
-            # Semi-supervised is set to true only when prior information is used with a sketch (in case of histopathology)
-            self.semi_supervised = semi_supervised
             # self.save_hyperparameters()
 
     def on_fit_start(self):
@@ -88,10 +85,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         opt = self.optimizers()
         opt.zero_grad()
         
-        if len(batch) == 2:
-            x, y = batch
-        else:
-            x, x_sketch, y = batch
+        x, x_sketch, y = batch
 
         # Create feature cost matrix on first iteration
         if self.current_epoch==0 and batch_idx == 0 and self.num_steps==1:
@@ -109,25 +103,17 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         # Predictor loss with the features selected so far 
         x_masked = self.mask_layer(x, m_hard)
 
-        # If using a sketch as semi-supervision
-        if not self.semi_supervised:
-            pred_without_next_feature = self.predictor(x_masked)
-        else:
-            pred_without_next_feature = self.predictor(x_masked, x_sketch.detach())
+        # Using a sketch as prior information
+        pred_without_next_feature = self.predictor(x_masked, x_sketch.detach())
 
         loss_without_next_feature = self.loss_fn(pred_without_next_feature, y)
 
         for _ in range(self.max_features):
             # Estimate CMI using value network, use_entropy  is used to bound predicted CMIs
             x_masked = self.mask_layer(x, m_hard)
-            if not self.semi_supervised:
-                # Without sketch
-                pred_CMI = self.value_network(x_masked) * torch.tensor(get_entropy(pred_without_next_feature.detach()), device=x.device).unsqueeze(1) \
-                                if self.use_entropy else self.value_network(x_masked)
-            else:
-                # With sketch
-                pred_CMI = self.value_network(x_masked, x_sketch) * torch.tensor(get_entropy(pred_without_next_feature.detach()), device=x.device).unsqueeze(1) \
-                                if self.use_entropy else self.value_network(x_masked, x_sketch)
+            # With sketch
+            pred_CMI = self.value_network(x_masked, x_sketch) * torch.tensor(get_entropy(pred_without_next_feature.detach()), device=x.device).unsqueeze(1) \
+                            if self.use_entropy else self.value_network(x_masked, x_sketch)
 
             # Select the next feature
             exploit = (torch.rand(len(x), device=x.device) > self.eps).int()
@@ -143,12 +129,8 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             # Predictor loss including the next feature
             x_masked = self.mask_layer(x, m_hard)
 
-            if not self.semi_supervised:
-                # Without sketch
-                pred_with_next_feature = self.predictor(x_masked)
-            else:
-                # With sketch
-                pred_with_next_feature = self.predictor(x_masked, x_sketch.detach())
+            # With sketch
+            pred_with_next_feature = self.predictor(x_masked, x_sketch.detach())
 
             # CE loss for predictor
             loss_with_next_feature = self.loss_fn(pred_with_next_feature, y)
@@ -193,10 +175,8 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         self.log('Value Network Loss Train', value_network_loss, prog_bar=True, logger=False)
     
     def validation_step(self, batch, batch_idx):
-        if len(batch) == 2:
-            x, y = batch
-        else:
-            x, x_sketch, y = batch
+        
+        x, x_sketch, y = batch
         
         # Setup.
         m_hard = torch.zeros(len(x), self.mask_size, dtype=x.dtype, device=x.device)
@@ -207,16 +187,11 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         for _ in range(self.max_features):
             # Estimate CMI using value network, use_entropy  is used to bound predicted CMIs
             x_masked = self.mask_layer(x, m_hard)
-            if not self.semi_supervised:
-                # Without sketch
-                pred_without_next_feature = self.predictor(x_masked)
-                pred_CMI = self.value_network(x_masked) * torch.tensor(get_entropy(pred_without_next_feature.detach()), device=x.device).unsqueeze(1) \
-                                if self.use_entropy else self.value_network(x_masked)
-            else:
-                # With sketch
-                pred_without_next_feature = self.predictor(x_masked, x_sketch)
-                pred_CMI = self.value_network(x_masked, x_sketch) * torch.tensor(get_entropy(pred_without_next_feature.detach()), device=x.device).unsqueeze(1) \
-                                if self.use_entropy else self.value_network(x_masked, x_sketch)
+            
+            # With sketch
+            pred_without_next_feature = self.predictor(x_masked, x_sketch)
+            pred_CMI = self.value_network(x_masked, x_sketch) * torch.tensor(get_entropy(pred_without_next_feature.detach()), device=x.device).unsqueeze(1) \
+                            if self.use_entropy else self.value_network(x_masked, x_sketch)
 
             # Select next feature and ensure no repeats
             pred_CMI -= 1e6 * m_hard
@@ -234,12 +209,9 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             # Make prediction
             x_masked = self.mask_layer(x, m_hard)
             
-            if not self.semi_supervised:
-                # Without sketch
-                pred = self.predictor(x_masked)
-            else:
-                # With sketch
-                pred = self.predictor(x_masked, x_sketch)
+            
+            # With sketch
+            pred = self.predictor(x_masked, x_sketch)
                 
             pred_val_loss = self.loss_fn(pred, y)
 
@@ -353,11 +325,9 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             batch_loss = 0
             # Val step
             for i, batch in enumerate(tqdm(test_dataloader)):
-                if len(batch) == 2:
-                    x, y = batch
-                else:
-                    x, x_sketch, y = batch
-                    x_sketch = x_sketch.to(device)
+                
+                x, x_sketch, y = batch
+                x_sketch = x_sketch.to(device)
 
                 x = x.to(device)
                 y = y.to(device)
@@ -379,16 +349,11 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                 while not budget_exhausted:
                     # Estimate CMI using value network, use_entropy  is used to bound predicted CMIs
                     x_masked = mask_layer(x, m_hard)
-                    if not self.semi_supervised:
-                        # Without sketch
-                        pred = predictor(x_masked)
-                        pred_CMI = value_network(x_masked) * torch.tensor(get_entropy(pred.detach()), device=x.device).unsqueeze(1) \
-                                        if use_entropy else value_network(x_masked)
-                    else:
-                        # With sketch
-                        pred = predictor(x_masked, x_sketch)
-                        pred_CMI = value_network(x_masked, x_sketch) * torch.tensor(get_entropy(pred.detach()), device=x.device).unsqueeze(1) \
-                                    if use_entropy else value_network(x_masked, x_sketch)
+                    
+                    # With sketch
+                    pred = predictor(x_masked, x_sketch)
+                    pred_CMI = value_network(x_masked, x_sketch) * torch.tensor(get_entropy(pred.detach()), device=x.device).unsqueeze(1) \
+                                if use_entropy else value_network(x_masked, x_sketch)
 
                     # Save different metric dicts
                     if iteration not in pred_cmi_dict:
@@ -409,7 +374,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                     # Penalized Policy Stopping Criteria
                     if evaluation_mode == 'lamda-penalty':
                         lamda = kwargs['lamda']
-
+                        # print(pred_CMI)
                         adjusted_CMI = pred_CMI - lamda * feature_costs
                         check_neg_CMI = torch.max(adjusted_CMI, dim=1).values > 0
 
@@ -468,10 +433,8 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                     elif evaluation_mode == 'confidence':
                         min_confidence = kwargs['min_confidence']
                         x_masked = mask_layer(x, m_hard)
-                        if not self.semi_supervised:
-                            pred = predictor(x_masked)
-                        else:
-                            pred = predictor(x_masked, x_sketch)
+                        
+                        pred = predictor(x_masked, x_sketch)
 
                         confidences = get_confidence(pred)
                         
@@ -514,12 +477,9 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
 
                 # Make prediction
                 x_masked = mask_layer(x, m_hard)
-                if not self.semi_supervised:
-                    # Without sketch
-                    pred = predictor(x_masked)
-                else:
-                    # With sketch
-                    pred = predictor(x_masked, x_sketch)
+                
+                # With sketch
+                pred = predictor(x_masked, x_sketch)
 
                 pred_list.append(pred.cpu())
                 y_list.append(y.cpu())
