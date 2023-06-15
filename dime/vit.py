@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from torchvision import transforms
 
 class PredictorViT(nn.Module):
     def __init__(self, backbone, num_classes=10):

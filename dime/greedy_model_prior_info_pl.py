@@ -3,11 +3,8 @@
 import torch
 import torch.optim as optim
 import pytorch_lightning as pl
-from torchvision import transforms
 import torch.nn as nn
-from torch.utils.data import DataLoader
-from copy import deepcopy
-from dime.utils import generate_uniform_mask, restore_parameters, get_entropy, get_confidence, selection_without_lamda, accuracy
+from dime.utils import get_entropy, get_confidence, selection_without_lamda
 import numpy as np
 from tqdm import tqdm
 
