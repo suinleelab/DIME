@@ -6,19 +6,13 @@ import torch.nn as nn
 from torchmetrics import AUROC
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, random_split
-import os
-from fastai.vision.all import untar_data, URLs
-from os import path
-import sys
-sys.path.append('../')
-from data_utils import MaskLayer2d, get_mlp_network
-sys.path.append('../../')
+from experiments import MaskLayer2d, get_mlp_network
 from dime.vit import PredictorViT, SelectorViT
 from baseline_models.base_model import BaseModel
 from baseline_models.hard_attention_model import HardAttention
 from dime.masking_pretrainer import MaskingPretrainer
-from utils import accuracy, auc, normalize, StaticMaskLayer2d, ConcreteMask2d
-from baselines import cae, hardattention, dfs
+from dime.utils import accuracy, auc, normalize, StaticMaskLayer2d, ConcreteMask2d
+from experiments.baselines import cae, hardattention, dfs
 from torchvision import transforms
 from torchmetrics import Accuracy
 import timm

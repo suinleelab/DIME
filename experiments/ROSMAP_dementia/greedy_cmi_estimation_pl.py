@@ -10,13 +10,10 @@ from torch.utils.data import DataLoader, random_split
 import os
 from os import path
 import pandas as pd
-import sys
-sys.path.append('../')
-from data_utils import ROSMAPDataset, get_group_matrix, get_xy, MaskLayerGrouped, data_split
-sys.path.append('../../')
+from experiments import ROSMAPDataset, get_group_matrix, get_xy, MaskLayerGrouped, data_split
 from dime.masking_pretrainer import MaskingPretrainer#, GreedyCMIEstimator
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
-from utils import accuracy, auc, normalize
+from dime.utils import accuracy, auc, normalize
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger

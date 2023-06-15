@@ -4,9 +4,7 @@ import torch.optim as optim
 import numpy as np
 from tqdm.auto import tqdm
 from copy import deepcopy
-import sys
-sys.path.append("../../")
-from utils import restore_parameters, generate_uniform_mask
+from dime.utils import restore_parameters, generate_uniform_mask
 
 
 def valid_probs(preds):

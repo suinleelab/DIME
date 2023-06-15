@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from utils import generate_uniform_mask, restore_parameters
+from dime.utils import restore_parameters
 from copy import deepcopy
-
 
 class BaseModel(nn.Module):
     '''

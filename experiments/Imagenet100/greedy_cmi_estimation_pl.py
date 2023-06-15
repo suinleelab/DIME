@@ -11,17 +11,13 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 import os
-from fastai.vision.all import untar_data, URLs
-import sys
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-sys.path.append('../')
-from data_utils import MaskLayerGaussian, MaskLayer2d
-sys.path.append('../../')
+from experiments import MaskLayerGaussian, MaskLayer2d
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
 from dime.masking_pretrainer import MaskingPretrainer
-from utils import accuracy, auc, normalize
+from dime.utils import accuracy, auc, normalize
 from dime.vit import PredictorViT, ValueNetworViT
 from dime.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
 import timm

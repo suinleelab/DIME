@@ -7,15 +7,12 @@ from torchmetrics import AUROC
 from sklearn.metrics import accuracy_score
 from torch.utils.data import DataLoader, random_split
 from os import path
-import sys
 import pandas as pd
 import feature_groups
-sys.path.append('../')
-from data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split
-sys.path.append('../../')
-from dime.masking_pretrainer import MaskingPretrainer#, GreedyCMIEstimator
+from experiments import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split
+from dime.masking_pretrainer import MaskingPretrainer
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
-from utils import accuracy, auc, normalize
+from dime.utils import accuracy, auc, normalize
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger

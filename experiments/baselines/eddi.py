@@ -2,10 +2,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
-from baselines.iterative import calculate_criterion, Imputer
-import sys
-sys.path.append("../")
-from data_utils import MaskLayerGrouped
+from experiments.baselines.iterative import calculate_criterion, Imputer
+from experiments import MaskLayerGrouped
 
 class EDDI(nn.Module):
     '''

@@ -12,17 +12,12 @@ from torchvision.datasets import ImageFolder
 import os
 from fastai.vision.all import untar_data, URLs
 import pandas as pd
-import sys
-sys.path.append('../')
-from data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledDataset, HistopathologyDownsampledEdgeDataset
-sys.path.append('../../')
+from experiments import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
 from dime.masking_pretrainer import MaskingPretrainer
 from dime.greedy_models import GreedyCMIEstimator
 from dime.sketch_supervision_predictor import SketchSupervisionPredictor
-from utils import accuracy, auc, normalize
-from dime.vit import PredictorViT, ValueNetworViT, PredictorSemiSupervisedVit, ValueNetworkSemiSupervisedVit
-from dime.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
-# from dime.vit import vit_tiny_patch16_224
+from dime.utils import accuracy, auc, normalize
+from dime.vit import PredictorViT, ValueNetworViT, PredictorSemiSupervisedVit
 import timm
 
 # Set up command line arguments
@@ -77,7 +72,7 @@ if __name__ == '__main__':
         transforms.Normalize(*norm_constants),
     ])
 
-    data_dir = '/projects/<labname>/<username>/hist_data/mhist/'
+    data_dir = '/projects/<labname>/<username>/hist_data/MHIST/'
 
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')

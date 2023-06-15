@@ -80,9 +80,7 @@ class HistopathologyDownsampledDataset(Dataset):
     
     def __getitem__(self, idx):
         image = Image.open(self.data_dir + self.image_id_list[idx])
-#         print(image.size)
         image = self.transforms(image)
-#         print(image.shape)
         return image, self.labels[idx]
 
 class HistopathologyDownsampledEdgeDataset(Dataset):

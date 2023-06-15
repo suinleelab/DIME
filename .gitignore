@@ -11,3 +11,5 @@ pretrained_resnet_models/
 *.npy
 *.png
 *.pkl
+*.egg-info
+build/

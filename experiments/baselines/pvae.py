@@ -3,10 +3,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import sys
-sys.path.append("../../")
-from utils import generate_uniform_mask, restore_parameters
-from experiments.data_utils import MaskLayerGrouped
+from dime.utils import generate_uniform_mask, restore_parameters
+from experiments import MaskLayerGrouped
 from torch.distributions.normal import Normal
 from torch.distributions.bernoulli import Bernoulli
 from tqdm import tqdm

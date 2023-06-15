@@ -13,20 +13,15 @@ from torchvision.datasets import ImageFolder
 import os
 from fastai.vision.all import untar_data, URLs
 import pandas as pd
-import sys
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-sys.path.append('../')
-from data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledDataset, HistopathologyDownsampledEdgeDataset
-sys.path.append('../../')
-from dime.masking_pretrainer import MaskingPretrainer#, GreedyCMIEstimator
+from experiments import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledDataset
+from dime.masking_pretrainer import MaskingPretrainer
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
-# from models.resnet import ResNet18Backbone, ResNet18ClassifierHead, ResNet18CMIPredictorHead
-from utils import accuracy, auc, normalize
+from dime.utils import accuracy, auc, normalize
 from dime.vit import PredictorViT, ValueNetworViT
 from dime.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
-# from models.vit import vit_tiny_patch16_224
 import timm
 
 vit_model_options = ['vit_small_patch16_224', 'vit_tiny_patch16_224']

@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.distributions import Categorical
 from torch.utils.data import DataLoader
 from copy import deepcopy
-from utils import generate_uniform_mask, restore_parameters, get_entropy, get_confidence, selection_without_lamda, accuracy
+from dime.utils import generate_uniform_mask, restore_parameters, get_entropy, get_confidence, selection_without_lamda, accuracy
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 from tqdm import tqdm

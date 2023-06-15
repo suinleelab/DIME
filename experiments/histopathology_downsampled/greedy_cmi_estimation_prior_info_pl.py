@@ -13,24 +13,17 @@ from torchvision.datasets import ImageFolder
 import os
 from fastai.vision.all import untar_data, URLs
 import pandas as pd
-import sys
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-sys.path.append('../')
-from data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledDataset, HistopathologyDownsampledEdgeDataset
-sys.path.append('../../')
-from dime.masking_pretrainer_prior_info import MaskingPretrainerPriorInfo#, GreedyCMIEstimator
+from experiments import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
+from dime.masking_pretrainer_prior_info import MaskingPretrainerPriorInfo
 from dime.greedy_model_prior_info_pl import GreedyCMIEstimatorPLPriorInfo
-# from models.resnet import ResNet18Backbone, ResNet18ClassifierHead, ResNet18CMIPredictorHead
-from utils import accuracy, auc, normalize
+from dime.utils import accuracy, auc, normalize
 from dime.vit import PredictorSemiSupervisedVit, ValueNetworkSemiSupervisedVit
-from dime.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
-# from models.vit import vit_tiny_patch16_224
 import timm
 
 vit_model_options = ['vit_small_patch16_224', 'vit_tiny_patch16_224']
-resnet_model_options = ['resnet18']
 
 # Set up command line arguments
 parser = argparse.ArgumentParser()
@@ -48,7 +41,7 @@ parser.add_argument('--lr', type=float,
                                 help="Learning rate used train the network")
 parser.add_argument('--pretrained_model_name', type=str, 
                                 default='vit_small_patch16_224', 
-                                choices=vit_model_options+resnet_model_options, 
+                                choices=vit_model_options, 
                                 help="Name of the pretrained model to use")
 
 if __name__ == '__main__':

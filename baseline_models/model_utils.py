@@ -6,8 +6,7 @@ import numpy as np
 from torch import nn
 from torch.nn import functional as F
 import sys
-sys.path.append('../')
-from models.nsf import make_flow
+from baseline_models.nsf import make_flow
 import math
 
 # All of these classes are used by the Probabilistic Hard Attention baseline, refactored from https://github.com/samrudhdhirangrej/Probabilistic-Hard-Attention

@@ -1,10 +1,7 @@
-import sys
 from torchvision import transforms
-sys.path.append('../')
-from data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
-sys.path.append('../../')
+from experiments import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
 import timm
-from utils import accuracy, auc, normalize
+from dime.utils import accuracy, auc, normalize
 import torch
 import torch.optim as optim
 import pandas as pd
@@ -35,7 +32,7 @@ if __name__ == "__main__":
         transforms.Normalize(*norm_constants)
     ])
 
-    data_dir = '/projects/<labname>/<username>/hist_data/mhist/'
+    data_dir = '/projects/<labname>/<username>/hist_data/MHIST/'
 
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')

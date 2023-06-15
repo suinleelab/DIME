@@ -9,16 +9,13 @@ from torch.utils.data import DataLoader, random_split
 import os
 from fastai.vision.all import untar_data, URLs
 from os import path
-import sys
-sys.path.append('../')
-from data_utils import MaskLayer2d, get_mlp_network
-sys.path.append('../../')
+from experiments import MaskLayer2d, get_mlp_network
 from dime.vit import PredictorViT, SelectorViT
 from baseline_models.base_model import BaseModel
 from baseline_models.hard_attention_model import HardAttention
 from dime.masking_pretrainer import MaskingPretrainer
-from utils import accuracy, auc, normalize, StaticMaskLayer2d, ConcreteMask2d
-from baselines import cae, hardattention, dfs
+from dime.utils import accuracy, auc, normalize, StaticMaskLayer2d, ConcreteMask2d
+from experiments.baselines import cae, hardattention, dfs
 from torchvision import transforms
 from torchmetrics import Accuracy
 import timm
@@ -63,7 +60,7 @@ if __name__ == '__main__':
     device = torch.device('cuda', args.gpu)
     dataset_path = "/homes/gws/<username>/.fastai/data/imagenette2-320"
     if not os.path.exists(dataset_path):
-        dataset_path = untar_data(URLs.IMAGENETTE_320)
+        dataset_path = str(untar_data(URLs.IMAGENETTE_320))
 
     print(dataset_path)
     norm_constants = ((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))

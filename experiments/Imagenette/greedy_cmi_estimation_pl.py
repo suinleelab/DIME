@@ -15,13 +15,10 @@ from fastai.vision.all import untar_data, URLs
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-import sys
-sys.path.append('../')
-from data_utils import MaskLayerGaussian, MaskLayer2d
-sys.path.append('../../')
+from experiments import MaskLayerGaussian, MaskLayer2d
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
 from dime.masking_pretrainer import MaskingPretrainer
-from utils import accuracy, auc, normalize
+from dime.utils import accuracy, auc, normalize
 from dime.vit import PredictorViT, ValueNetworViT
 from dime.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
 import timm
@@ -99,7 +96,6 @@ if __name__ == '__main__':
 
     # Get Datasets
     train_dataset_train_transforms = ImageFolder(dataset_path+'/train', transforms_train)
-    print(train_dataset_train_transforms.class_to_idx)
     train_dataset_all_len = len(train_dataset_train_transforms)
 
     # Get train and val indices
@@ -135,7 +131,6 @@ if __name__ == '__main__':
     else:
         # Set up networks.
         backbone, expansion = ResNet18Backbone(eval(pretrained_model_name + '(pretrained=True)'))
-        print(expansion)
         predictor =  Predictor(backbone, expansion)
         block_layer_stride = 1
         if mask_width == 14:

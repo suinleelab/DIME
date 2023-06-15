@@ -6,16 +6,13 @@ import torch.nn as nn
 from torchvision import transforms
 from torchvision.datasets import MNIST
 from sklearn.metrics import accuracy_score
-import sys
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-sys.path.append('../../')
 from dime.masking_pretrainer import MaskingPretrainer
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
-from utils import MaskLayer, accuracy, generate_2d_gaussion_cost, generate_pixel_based_cost, selection_with_lamda, selection_without_lamda
+from dime.utils import MaskLayer, accuracy, generate_2d_gaussion_cost, generate_pixel_based_cost, selection_with_lamda, selection_without_lamda
 from torch.utils.data import DataLoader
-import os.path
 from os import path
 
 # Set up command line arguments

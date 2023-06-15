@@ -6,11 +6,10 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 import numpy as np
-import sys
-sys.path.append('../')
-from models.model_utils import VAE, GlimpseLoc, simpleRNN
-sys.path.append('../../')
-from utils import auc
+# sys.path.append('../')
+from baseline_models.model_utils import VAE, GlimpseLoc, simpleRNN
+# sys.path.append('../../')
+from dime.utils import auc
 
 class HardAttention(nn.Module):
     def __init__(self, T, nsfL, nf, nh, nz, classes, gz, imsz, ccebal, training_phase, pretrain_checkpoint=None, return_auc=False):

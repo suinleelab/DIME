@@ -2,11 +2,9 @@
 import sys
 from torchvision import transforms
 import argparse
-sys.path.append('../')
-from data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
-sys.path.append('../../')
+from experiments import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
 import timm
-from utils import accuracy, auc, normalize
+from dime.utils import accuracy, auc, normalize
 from torchvision.datasets import ImageFolder
 import torch
 import torch.optim as optim
