@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from dime.utils import generate_uniform_mask, restore_parameters
-from experiments import MaskLayerGrouped
+from dime.data_utils import MaskLayerGrouped
 from torch.distributions.normal import Normal
 from torch.distributions.bernoulli import Bernoulli
 from tqdm import tqdm

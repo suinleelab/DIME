@@ -8,11 +8,14 @@ from torch.utils.data import DataLoader, random_split
 import pandas as pd
 from os import path
 import feature_groups
-from experiments import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split, get_mlp_network
+from dime.data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split, get_mlp_network
 from dime.masking_pretrainer import MaskingPretrainer
-from baseline_models.base_model import BaseModel
 from dime.utils import accuracy, auc, normalize, StaticMaskLayer1d, MaskLayer, ConcreteMask, get_confidence
-from experiments.baselines import eddi, pvae, iterative, dfs, cae
+import sys
+sys.path.append('../')
+from baselines import  eddi, pvae, iterative, dfs, cae
+sys.path.append('../../')
+from baseline_models.base_model import BaseModel
 import torch.optim as optim
 from tqdm import tqdm
 

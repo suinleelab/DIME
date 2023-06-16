@@ -2,7 +2,7 @@
 import sys
 from torchvision import transforms
 import argparse
-from experiments import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
+from dime.data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
 import timm
 from dime.utils import accuracy, auc, normalize
 from torchvision.datasets import ImageFolder

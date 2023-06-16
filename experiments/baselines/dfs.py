@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-import sys
-sys.path.append("../../")
 from dime.utils import restore_parameters, make_onehot, ConcreteSelector
 from copy import deepcopy
 from tqdm import tqdm

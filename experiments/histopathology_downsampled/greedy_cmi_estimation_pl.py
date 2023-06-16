@@ -16,7 +16,7 @@ import pandas as pd
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from experiments import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledDataset
+from dime.data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledDataset
 from dime.masking_pretrainer import MaskingPretrainer
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
 from dime.utils import accuracy, auc, normalize
@@ -91,7 +91,7 @@ if __name__ == '__main__':
         transforms.Normalize(*norm_constants)
     ])
 
-    data_dir = '/projects/<labname>/<username>/hist_data/MHIST/'
+    data_dir = '/projects/leelab2/sgadgil/hist_data/MHIST/'
 
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')

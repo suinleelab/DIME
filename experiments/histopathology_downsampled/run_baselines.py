@@ -7,13 +7,16 @@ from torchmetrics import AUROC
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, random_split
 from fastai.vision.all import untar_data, URLs
-from experiments import MaskLayer2d, get_mlp_network, HistopathologyDownsampledDataset
+from dime.data_utils import MaskLayer2d, get_mlp_network, HistopathologyDownsampledDataset
 from dime.vit import PredictorViT, SelectorViT
-from baseline_models.base_model import BaseModel
-from baseline_models.hard_attention_model import HardAttention
 from dime.masking_pretrainer import MaskingPretrainer
 from dime.utils import accuracy, auc, normalize, StaticMaskLayer2d, ConcreteMask2d
-from experiments.baselines import cae, hardattention, dfs
+import sys
+# sys.path.append('../')
+from baselines import cae, hardattention, dfs
+# sys.path.append('../../')
+from baseline_models.base_model import BaseModel
+from baseline_models.hard_attention_model import HardAttention
 from torchvision import transforms
 from torchmetrics import Accuracy
 import timm

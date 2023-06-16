@@ -16,7 +16,7 @@ import pandas as pd
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from experiments import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
+from dime.data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
 from dime.masking_pretrainer_prior_info import MaskingPretrainerPriorInfo
 from dime.greedy_model_prior_info_pl import GreedyCMIEstimatorPLPriorInfo
 from dime.utils import accuracy, auc, normalize

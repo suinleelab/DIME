@@ -11,7 +11,7 @@ setuptools.setup(
     ''',
     long_description_content_type='text/markdown',
     url='',
-    packages=['dime', 'experiments', 'baseline_models'],
+    packages=['dime'],
     install_requires=[
         'numpy',
         'fastai>=2.5.3',

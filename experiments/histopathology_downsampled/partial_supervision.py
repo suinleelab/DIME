@@ -12,7 +12,7 @@ from torchvision.datasets import ImageFolder
 import os
 from fastai.vision.all import untar_data, URLs
 import pandas as pd
-from experiments import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
+from dime.data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
 from dime.masking_pretrainer import MaskingPretrainer
 from dime.greedy_models import GreedyCMIEstimator
 from dime.sketch_supervision_predictor import SketchSupervisionPredictor

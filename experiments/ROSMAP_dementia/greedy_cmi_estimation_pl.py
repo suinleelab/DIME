@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, random_split
 import os
 from os import path
 import pandas as pd
-from experiments import ROSMAPDataset, get_group_matrix, get_xy, MaskLayerGrouped, data_split
+from dime.data_utils import ROSMAPDataset, get_group_matrix, get_xy, MaskLayerGrouped, data_split
 from dime.masking_pretrainer import MaskingPretrainer#, GreedyCMIEstimator
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
 from dime.utils import accuracy, auc, normalize

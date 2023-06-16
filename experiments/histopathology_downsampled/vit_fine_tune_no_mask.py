@@ -1,5 +1,5 @@
 from torchvision import transforms
-from experiments import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
+from dime.data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
 import timm
 from dime.utils import accuracy, auc, normalize
 import torch

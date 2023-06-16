@@ -7,14 +7,17 @@ from torchmetrics import AUROC
 from sklearn.metrics import accuracy_score
 from torch.utils.data import DataLoader, random_split
 from os import path
-from experiments import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split, get_mlp_network
-from baseline_models.base_model import BaseModel
+from dime.data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split, get_mlp_network
 from dime.masking_pretrainer import MaskingPretrainer
 from dime.utils import accuracy, auc, normalize, StaticMaskLayer1d, MaskLayer, ConcreteMask, get_confidence
 from torchvision import transforms
 from torchmetrics import Accuracy
 from torchvision.datasets import MNIST
-from experiments.baselines import eddi, pvae, iterative, cae, dfs
+import sys
+sys.path.append('../')
+from baselines import  eddi, pvae, iterative, dfs, cae
+sys.path.append('../../')
+from baseline_models.base_model import BaseModel
 import torch.optim as optim
 from tqdm import tqdm
 

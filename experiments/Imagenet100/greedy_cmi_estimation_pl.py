@@ -14,7 +14,7 @@ import os
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from experiments import MaskLayerGaussian, MaskLayer2d
+from dime.data_utils import MaskLayerGaussian, MaskLayer2d
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
 from dime.masking_pretrainer import MaskingPretrainer
 from dime.utils import accuracy, auc, normalize

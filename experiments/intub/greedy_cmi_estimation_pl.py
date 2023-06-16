@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, random_split
 from os import path
 import pandas as pd
 import feature_groups
-from experiments import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split
+from dime.data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split
 from dime.masking_pretrainer import MaskingPretrainer
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
 from dime.utils import accuracy, auc, normalize
