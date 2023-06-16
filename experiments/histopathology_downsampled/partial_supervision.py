@@ -9,12 +9,15 @@ from sklearn.metrics import accuracy_score
 from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning import Trainer
 import os
 from fastai.vision.all import untar_data, URLs
 import pandas as pd
 from dime.data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
 from dime.masking_pretrainer import MaskingPretrainer
-from dime.greedy_models import GreedyCMIEstimator
+from dime.greedy_model_pl import GreedyCMIEstimatorPL
 from dime.sketch_supervision_predictor import SketchSupervisionPredictor
 from dime.utils import accuracy, auc, normalize
 from dime.vit import PredictorViT, ValueNetworViT, PredictorSemiSupervisedVit
@@ -72,7 +75,7 @@ if __name__ == '__main__':
         transforms.Normalize(*norm_constants),
     ])
 
-    data_dir = '/projects/<labname>/<username>/hist_data/MHIST/'
+    data_dir = '/projects/leelab2/sgadgil/hist_data/MHIST/'
 
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')
@@ -129,27 +132,39 @@ if __name__ == '__main__':
                      trained_predictor_name=trained_predictor_name)
 
     run_description = f"max_features_100_{pretrained_model_name}_lr_{str(lr)}_sketch_in_predictor_use_entropy_{mask_type}_mask_width_{mask_width}"
+    logger = TensorBoardLogger("logs", name=f"{run_description}")
+    checkpoint_callback = best_hard_callback = ModelCheckpoint(
+                save_top_k=1,
+                monitor='Performance_Val',
+                mode='max',
+                filename='best_val_perfomance_model',
+                verbose=False
+            )
 
-    greedy_cmi_estimator = GreedyCMIEstimator(value_network, predictor, mask_layer).to(device)
-    greedy_cmi_estimator.fit(train_dataloader, 
-                            val_dataloader,
-                            lr=lr,
-                            min_lr=min_lr,
-                            nepochs=50,
-                            max_features=100,
-                            eps=0.05,
-                            loss_fn=nn.CrossEntropyLoss(reduction='none'),
-                            val_loss_fn=auc,
-                            tensorboard_file_name_suffix=run_description,
-                            eps_decay=True,
-                            eps_decay_rate=0.2,
-                            patience=3,
-                            feature_costs=None,
-                            use_entropy=True)
+    greedy_cmi_estimator = GreedyCMIEstimatorPL(value_network, predictor, mask_layer,
+                                    lr=lr,
+                                    min_lr=min_lr,
+                                    max_features=60,
+                                    eps=0.05,
+                                    loss_fn=nn.CrossEntropyLoss(reduction='none'),
+                                    val_loss_fn=auc,
+                                    eps_decay=True,
+                                    eps_decay_rate=0.2,
+                                    patience=3,
+                                    feature_costs=None,
+                                    use_entropy=True)
     
-    predictor.load_state_dict(torch.load(f"results/predictor_trained_{run_description}.pth"))
-    value_network.load_state_dict(torch.load(f"results/value_network_trained_{run_description}.pth"))
+    trainer = Trainer(
+                accelerator='gpu',
+                devices=[args.gpu],
+                max_epochs=250,
+                precision=16,
+                logger=logger,
+                num_sanity_val_steps=0,
+                callbacks=[checkpoint_callback]
+            )
 
+    trainer.fit(greedy_cmi_estimator, train_dataloader, val_dataloader)
     sketch_supervision_predictor = SketchSupervisionPredictor(value_network, predictor, predictor_with_sketch, mask_layer).to(device)
     sketch_supervision_predictor.fit(train_dataloader, 
                             val_dataloader,
