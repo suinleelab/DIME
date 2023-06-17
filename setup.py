@@ -26,7 +26,7 @@ setuptools.setup(
         'tqdm',
         'pandas>=1.5.2',
         'torchmetrics>=0.11.0',
-        'pytorch_lightning>=1.8.6'
+        'pytorch_lightning==1.9.4'
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
