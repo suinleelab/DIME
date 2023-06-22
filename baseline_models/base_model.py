@@ -4,6 +4,7 @@ import torch.optim as optim
 from dime.utils import restore_parameters
 from copy import deepcopy
 
+
 class BaseModel(nn.Module):
     '''
     Base model, no missing features.

@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
-from baselines.iterative import calculate_criterion, Imputer
 from dime.data_utils import MaskLayerGrouped
+from baselines.iterative import calculate_criterion, Imputer
+
 
 class EDDI(nn.Module):
     '''
@@ -25,7 +26,7 @@ class EDDI(nn.Module):
         assert task in ('regression', 'classification')
         self.task = task
         self.feature_costs = feature_costs
-        
+    
         # TODO support for groups is not elegant
         if isinstance(mask_layer, MaskLayerGrouped):
             self.data_imputer = Imputer(self.mask_layer.group_matrix.cpu().data.numpy())
@@ -77,7 +78,6 @@ class EDDI(nn.Module):
         sampler = self.sampler
         data_imputer = self.data_imputer
         device = next(model.parameters()).device
-        print("Num features=", num_features)
         
         # Set up mask.
         if hasattr(mask_layer, 'mask_size') and (mask_layer.mask_size is not None):
@@ -183,7 +183,6 @@ class EDDI(nn.Module):
         
         print(f"max_features={max_features}")
         print(f"num_features_list={num_features_list}")
-
 
         total_cost = 0
         for k in tqdm(range(max_features)):

@@ -10,7 +10,7 @@ from tqdm import tqdm
 class GreedyDynamicSelection(nn.Module):
     '''
     Greedy adaptive feature selection.
-    
+   
     Args:
       selector:
       predictor:
@@ -20,12 +20,12 @@ class GreedyDynamicSelection(nn.Module):
 
     def __init__(self, selector, predictor, mask_layer):
         super().__init__()
-        
+       
         # Set up models and mask layer.
         self.selector = selector
         self.predictor = predictor
         self.mask_layer = mask_layer
-        
+       
         # Set up selector layer.
         self.selector_layer = ConcreteSelector()
 
@@ -48,8 +48,7 @@ class GreedyDynamicSelection(nn.Module):
             argmax=False,
             verbose=True):
         '''
-        Train model to perform greedy adaptive feature selection.
-        
+        Train model to perform greedy adaptive feature selection.      
         Args:
           train_loader:
           val_loader:
@@ -78,7 +77,7 @@ class GreedyDynamicSelection(nn.Module):
                 raise ValueError('must specify val_loss_mode (min or max) when validation_loss_fn is specified')
         if early_stopping_epochs is None:
             early_stopping_epochs = patience + 1
-        
+       
         # Set up models.
         selector = self.selector
         predictor = self.predictor
@@ -86,7 +85,7 @@ class GreedyDynamicSelection(nn.Module):
         selector_layer = self.selector_layer
         device = next(predictor.parameters()).device
         val_loss_fn.to(device)
-        
+      
         # Determine mask size.
         if hasattr(mask_layer, 'mask_size') and (mask_layer.mask_size is not None):
             mask_size = mask_layer.mask_size
@@ -95,12 +94,12 @@ class GreedyDynamicSelection(nn.Module):
             x, y = next(iter(val_loader))
             assert len(x.shape) == 2
             mask_size = x.shape[1]
-        
+    
         # For tracking best models with zero temperature.
         best_val = None
         best_zerotemp_selector = None
         best_zerotemp_predictor = None
-        
+
         # Train separately with each temperature.
         total_epochs = 0
         for temp in np.geomspace(start_temp, end_temp, temp_steps):
@@ -324,7 +323,7 @@ class GreedyDynamicSelection(nn.Module):
                 pred, _, _ = self.forward(x, max_features, argmax)
                 pred_list.append(pred.cpu())
                 label_list.append(y.cpu())
-        
+       
             # Calculate metric(s).
             y = torch.cat(label_list, 0)
             pred = torch.cat(pred_list, 0)
@@ -334,5 +333,5 @@ class GreedyDynamicSelection(nn.Module):
                 score = {name: m(pred, y).item() for name, m in metric.items()}
             else:
                 score = metric(pred, y).item()
-                
+
         return score

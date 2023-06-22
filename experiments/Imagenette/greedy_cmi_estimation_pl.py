@@ -1,26 +1,24 @@
 # PyTorch lightning version
 
 import torch
-import pickle
 import argparse
 import numpy as np
 import torch.nn as nn
 from torchmetrics import AUROC
-from sklearn.metrics import accuracy_score
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
+from torchmetrics import Accuracy
 import os
 from fastai.vision.all import untar_data, URLs
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from dime.data_utils import MaskLayerGaussian, MaskLayer2d
-from dime.greedy_model_pl import GreedyCMIEstimatorPL
-from dime.masking_pretrainer import MaskingPretrainer
-from dime.utils import accuracy, auc, normalize
+from dime import GreedyCMIEstimatorPL
+from dime import MaskingPretrainer
 from dime.vit import PredictorViT, ValueNetworViT
-from dime.resnet_imagenet import resnet18, resnet34, resnet50, Predictor, ValueNetwork, ResNet18Backbone
+from dime.resnet_imagenet import Predictor, ValueNetwork, ResNet18Backbone
 import timm
 
 vit_model_options = ['vit_small_patch16_224', 'vit_tiny_patch16_224']
@@ -29,25 +27,25 @@ resnet_model_options = ['resnet18']
 # Set up command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0)
-parser.add_argument('--mask_type', type=str, 
-                                default='zero', 
-                                choices=['gaussian', 'zero'], 
-                                help="Type of mask to apply: either Gaussain blur (gaussian) or zero-out (zero)")
-parser.add_argument('--mask_width', type=int, 
-                                default=14, 
-                                choices=[7, 14], 
-                                help="Mask width to use in the mask layer")
-parser.add_argument('--lr', type=float, 
-                                default=1e-5, 
-                                help="Learning rate used train the network")
-parser.add_argument('--backbone', type=str, 
-                                default='vit', 
-                                choices=['vit', 'resnet'], 
-                                help="Backbone used to train the network")
-parser.add_argument('--pretrained_model_name', type=str, 
-                                default='vit_small_patch16_224', 
-                                choices=vit_model_options+resnet_model_options, 
-                                help="Name of the pretrained model to use")
+parser.add_argument('--mask_type', type=str,
+                    default='zero',
+                    choices=['gaussian', 'zero'],
+                    help="Type of mask to apply: either Gaussain blur (gaussian) or zero-out (zero)")
+parser.add_argument('--mask_width', type=int,
+                    default=14,
+                    choices=[7, 14],
+                    help="Mask width to use in the mask layer")
+parser.add_argument('--lr', type=float,
+                    default=1e-5,
+                    help="Learning rate used train the network")
+parser.add_argument('--backbone', type=str,
+                    default='vit',
+                    choices=['vit', 'resnet'],
+                    help="Backbone used to train the network")
+parser.add_argument('--pretrained_model_name', type=str,
+                    default='vit_small_patch16_224',
+                    choices=vit_model_options+resnet_model_options,
+                    help="Name of the pretrained model to use")
 
 if __name__ == '__main__':
     # Parse args
@@ -64,7 +62,7 @@ if __name__ == '__main__':
         min_lr = 1e-8
 
     if (network_type == 'vit' and pretrained_model_name not in vit_model_options) \
-        or (network_type == 'resnet' and pretrained_model_name not in resnet_model_options):
+       or (network_type == 'resnet' and pretrained_model_name not in resnet_model_options):
         raise argparse.ArgumentError("Network type and model name are not compatible")
 
     if mask_type == 'gaussian':
@@ -113,7 +111,7 @@ if __name__ == '__main__':
     # Prepare dataloaders.
     mbsize = 32
     train_dataloader = DataLoader(train_dataset, batch_size=mbsize, shuffle=True, pin_memory=True,
-                            drop_last=True, num_workers=4)
+                                  drop_last=True, num_workers=4)
     val_dataloader = DataLoader(val_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
     test_dataloader = DataLoader(test_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
 
@@ -126,12 +124,12 @@ if __name__ == '__main__':
     
     if network_type == 'vit':
         backbone = timm.create_model(pretrained_model_name, pretrained=True)
-        predictor =  PredictorViT(backbone)
+        predictor = PredictorViT(backbone)
         value_network = ValueNetworViT(backbone, mask_width=mask_width, use_entropy=True)
     else:
         # Set up networks.
         backbone, expansion = ResNet18Backbone(eval(pretrained_model_name + '(pretrained=True)'))
-        predictor =  Predictor(backbone, expansion)
+        predictor = Predictor(backbone, expansion)
         block_layer_stride = 1
         if mask_width == 14:
             block_layer_stride = 0.5
@@ -173,17 +171,17 @@ if __name__ == '__main__':
     
     # Jointly train predictor and value networks
     greedy_cmi_estimator = GreedyCMIEstimatorPL(value_network, predictor, mask_layer,
-                                    lr=lr,
-                                    min_lr=min_lr,
-                                    max_features=50,
-                                    eps=0.05,
-                                    loss_fn=nn.CrossEntropyLoss(reduction='none'),
-                                    val_loss_fn=auc,
-                                    eps_decay=True,
-                                    eps_decay_rate=0.2,
-                                    patience=3,
-                                    feature_costs=None,
-                                    use_entropy=True)
+                                                lr=lr,
+                                                min_lr=min_lr,
+                                                max_features=50,
+                                                eps=0.05,
+                                                loss_fn=nn.CrossEntropyLoss(reduction='none'),
+                                                val_loss_fn=Accuracy(task='multiclass', num_classes=10),
+                                                eps_decay=True,
+                                                eps_decay_rate=0.2,
+                                                patience=3,
+                                                feature_costs=None,
+                                                use_entropy=True)
     
     trainer = Trainer(
                 accelerator='gpu',

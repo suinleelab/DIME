@@ -1,11 +1,10 @@
 import torch
 import torch.nn as nn
-from sklearn.metrics import accuracy_score, roc_auc_score
 import numpy as np
 from torch.distributions import RelaxedOneHotCategorical
-import numpy as np
-from torch.nn import functional as F
-import math
+import statistics
+from scipy.stats import norm
+
 
 def restore_parameters(model, best_model):
     '''Move parameters from best model to current model.'''
@@ -32,6 +31,7 @@ class MaskLayer(nn.Module):
             out = torch.cat([out, m], dim=1)
         return out
 
+
 class StaticMaskLayer1d(torch.nn.Module):
     '''
     Mask a fixed set of indices from 1d tabular data.
@@ -45,6 +45,7 @@ class StaticMaskLayer1d(torch.nn.Module):
         
     def forward(self, x):
         return x[:, self.inds]
+
 
 class StaticMaskLayer2d(torch.nn.Module):
     '''
@@ -87,21 +88,12 @@ class StaticMaskLayer2d(torch.nn.Module):
         out = x * self.mask
         return out
 
+
 def generate_uniform_mask(batch_size, num_features):
     unif = torch.rand(batch_size, num_features)
     ref = torch.rand(batch_size, 1)
     return (unif > ref).float()
 
-def accuracy(pred, y):
-    assert isinstance(pred, torch.Tensor)
-    pred = pred.softmax(dim=1).cpu().data.numpy()
-    acc = accuracy_score(y, pred.argmax(axis=1))
-    return acc
-
-def auc(pred, y):
-    if isinstance(pred, torch.Tensor):
-        pred = pred.cpu().data.numpy()
-    return roc_auc_score(y, pred[:, 1])
 
 def get_entropy(pred):
     pred = pred.softmax(dim=1).cpu().data.numpy()
@@ -110,12 +102,15 @@ def get_entropy(pred):
     entropies = np.sum(pred * log_pred, axis=1)
     return -entropies
 
+
 def get_confidence(pred):
     pred = pred.softmax(dim=1)
     return torch.max(pred, dim=1).values
 
+
 def normalize(data, a, b):
     return (b - a) * ((data - np.min(data)) / (np.max(data) - np.min(data))) + a
+
 
 def selection_with_lamda(cmi, feature_costs=None, lamda=None):
     assert isinstance(cmi, torch.Tensor)
@@ -124,32 +119,17 @@ def selection_with_lamda(cmi, feature_costs=None, lamda=None):
     else:
         return torch.argmax(cmi - lamda * feature_costs, dim=1)
 
+
 def selection_without_lamda(cmi, feature_costs=None, lamda=None):
     if feature_costs is not None:
         return torch.argmax(cmi/feature_costs, dim=1)
     
     return torch.argmax(cmi, dim=1)
 
+
 def selection_without_cost(cmi, feature_costs=None, lamda=None):
     return torch.argmax(cmi, dim=1)
 
-def generate_gaussion_cost(dim):
-    x = np.arange(0, 784)
-    mean = statistics.mean(x)
-    sd = statistics.stdev(x)
-    return normalize(norm.pdf(x, mean, sd), 0, 1)
-
-def generate_2d_gaussion_cost(size=28, fwhm = 20, center=None):
-    x = np.arange(0, size, 1, float)
-    y = x[:,np.newaxis]
-
-    if center is None:
-        x0 = y0 = size // 2
-    else:
-        x0 = center[0]
-        y0 = center[1]
-
-    return normalize((np.exp(-4*np.log(2) * ((x-x0)**2 + (y-y0)**2) / fwhm**2)).flatten(), 0, 1)
 
 def generate_pixel_based_cost(dataset):
     cost = np.array([])
@@ -177,6 +157,13 @@ class ConcreteSelector(nn.Module):
             return dist.rsample()
 
 
+def ind_to_onehot(inds, n):
+    # Convert index to one-hot encoding.
+    onehot = torch.zeros(len(inds), n, dtype=torch.float32, device=inds.device)
+    onehot[torch.arange(len(inds)), inds] = 1
+    return onehot
+
+
 def make_onehot(x):
     '''Make an approximately one-hot vector one-hot.'''
     argmax = torch.argmax(x, dim=1)
@@ -184,10 +171,10 @@ def make_onehot(x):
     onehot[torch.arange(len(x)), argmax] = 1
     return onehot
 
+
 class ConcreteMask(nn.Module):
     '''
     For differentiable global feature selection.
-    
     Args:
       num_features:
       num_select:
@@ -217,7 +204,8 @@ class ConcreteMask(nn.Module):
         if self.append:
             out = torch.cat([out, m], dim=1)
         return out
-    
+
+
 class ConcreteMask2d(nn.Module):
     '''
     For differentiable global feature selection with 2d image data.
@@ -245,4 +233,3 @@ class ConcreteMask2d(nn.Module):
         m = self.upsample(m.reshape(-1, 1, self.width, self.width))
         out = x * m
         return out
-    

@@ -6,6 +6,7 @@ from copy import deepcopy
 from dime.utils import generate_uniform_mask, restore_parameters
 from tqdm import tqdm
 
+
 class MaskingPretrainerPriorInfo(nn.Module):
     '''Pretrain model with missing features.'''
 
@@ -145,7 +146,6 @@ class MaskingPretrainerPriorInfo(nn.Module):
                 pred = torch.cat(pred_list, 0)
                 val_loss = loss_fn(pred, y).item()
                 
-            
             # Print progress.
             if verbose:
                 print(f'{"-"*8}Epoch {epoch+1}{"-"*8}')

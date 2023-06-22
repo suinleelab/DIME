@@ -3,23 +3,20 @@ import pickle
 import argparse
 import numpy as np
 import torch.nn as nn
-from sklearn.metrics import accuracy_score
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 import pandas as pd
-from os import path
 import feature_groups
-from dime.data_utils import ROSMAPDataset, get_group_matrix, get_xy, MaskLayerGrouped, data_split, get_mlp_network
+from dime.data_utils import ROSMAPDataset, get_group_matrix, get_xy, MaskLayerGrouped, get_mlp_network
 from dime.masking_pretrainer import MaskingPretrainer
-from dime.utils import accuracy, auc, normalize, StaticMaskLayer1d, MaskLayer, ConcreteMask, get_confidence
-from torchmetrics import Accuracy, AUROC
-from torchvision.datasets import MNIST
+from dime.utils import StaticMaskLayer1d, ConcreteMask, get_confidence
+from torchmetrics import AUROC
+import torch.optim as optim
+from tqdm import tqdm
 import sys
 sys.path.append('../')
 from baselines import  eddi, pvae, iterative, dfs, cae
 sys.path.append('../../')
 from baseline_models.base_model import BaseModel
-import torch.optim as optim
-from tqdm import tqdm
 
 #from baselines import EDDI, PVAE
 
@@ -41,12 +38,10 @@ if __name__ == '__main__':
     auc_metric = AUROC(task='multiclass', num_classes=2)
     num_trials = args.num_trials
 
-
-    # cols_to_drop = [str(x) for x in range(len(fib_feature_names)) if str(x) not in ['98', '104', '107', '108', '109', '110']]
     cols_to_drop = []
     if cols_to_drop is not None:
-        rosmap_feature_names = [item for item in rosmap_feature_names if str(rosmap_feature_names.index(item)) not in cols_to_drop]
-    
+        rosmap_feature_names = [item for item in rosmap_feature_names if str(rosmap_feature_names.index(item)) 
+                                not in cols_to_drop]
     
     device = torch.device('cuda', args.gpu)
 
@@ -79,7 +74,6 @@ if __name__ == '__main__':
     val_dataloader = DataLoader(
         val_dataset, batch_size=128, shuffle=False, pin_memory=True,
         drop_last=True, num_workers=4)
-        
     test_dataloader = DataLoader(
         test_dataset, batch_size=128, shuffle=False, pin_memory=True,
         drop_last=True, num_workers=4)
@@ -93,7 +87,7 @@ if __name__ == '__main__':
         if args.use_apoe:
             feature_costs = df[1].tolist()
         else:
-            feature_costs = df[~df[0].isin(['apoe4_1copy','apoe4_2copies'])][1].tolist()
+            feature_costs = df[~df[0].isin(['apoe4_1copy', 'apoe4_2copies'])][1].tolist()
 
     for trial in range(5, 7):
 
@@ -186,7 +180,6 @@ if __name__ == '__main__':
             # Train masked predictor.
             model = get_mlp_network(d_in + num_groups, d_out)
             sampler = None
-            # if trial == 0:
             sampler = iterative.UniformSampler(get_xy(train_dataset)[0])  # TODO don't actually need sampler
             iterative_selector = iterative.IterativeSelector(model, mask_layer, sampler).to(device)
             iterative_selector.fit(
@@ -202,7 +195,7 @@ if __name__ == '__main__':
             eddi_selector = eddi.EDDI(pv, model, mask_layer, feature_costs=feature_costs).to(device)
             
             # Evaluate.
-            metrics_dict, cost_dict = eddi_selector.evaluate_multiple(test_dataloader, num_features, auc, verbose=False)
+            metrics_dict, cost_dict = eddi_selector.evaluate_multiple(test_dataloader, num_features, auc_metric, verbose=False)
             for num in num_features:
                 acc = metrics_dict[num]
                 results_dict['acc'][num] = acc
@@ -262,7 +255,7 @@ if __name__ == '__main__':
         
         # Train with full input
         if args.method == 'fully_supervised':
-            model  = get_mlp_network(d_in, d_out).to(device)
+            model = get_mlp_network(d_in, d_out).to(device)
             opt = optim.Adam(model.parameters(), lr=1e-3)
             criterion = torch.nn.CrossEntropyLoss()
             scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -317,9 +310,10 @@ if __name__ == '__main__':
                         print(f'Stopping early at epoch {epoch+1}')
                         break
 
-                print(f"Epoch: {epoch}, Train Loss: {train_batch_loss/len(train_dataloader)}, Val Loss: {val_batch_loss/len(val_dataloader)}, Val Performance: {auc(torch.cat(val_pred_list), torch.cat(val_y_list))}")
+                print(f"Epoch: {epoch}, Train Loss: {train_batch_loss/len(train_dataloader)},"
+                      + "Val Loss: {val_batch_loss/len(val_dataloader)},"
+                      + "Val Performance: {auc_metric(torch.cat(val_pred_list), torch.cat(val_y_list))}")
             
-
             print("Evaluating on test set")
             
             model.eval()
@@ -336,6 +330,6 @@ if __name__ == '__main__':
 
                 confidence_list.append(get_confidence(pred.cpu()))
             
-            print(f"Test Performance:{auc(torch.cat(test_pred_list), torch.cat(test_y_list))}")
+            print(f"Test Performance:{auc_metric(torch.cat(test_pred_list), torch.cat(test_y_list))}")
             with open('confidence.npy', 'wb') as f:
                 np.save(f, np.array(torch.cat(confidence_list).detach().numpy()))

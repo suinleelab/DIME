@@ -1,17 +1,16 @@
 import torch
-import pickle
 import argparse
 import numpy as np
 import torch.nn as nn
+from torchmetrics import Accuracy
 from torchvision import transforms
 from torchvision.datasets import MNIST
-from sklearn.metrics import accuracy_score
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from dime.masking_pretrainer import MaskingPretrainer
-from dime.greedy_model_pl import GreedyCMIEstimatorPL
-from dime.utils import MaskLayer, accuracy, generate_2d_gaussion_cost, generate_pixel_based_cost, selection_with_lamda, selection_without_lamda
+from dime import MaskingPretrainer
+from dime import GreedyCMIEstimatorPL
+from dime.utils import MaskLayer
 from torch.utils.data import DataLoader
 from os import path
 
@@ -21,6 +20,8 @@ parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--num_trials', type=int, default=5)
 
 if __name__ == '__main__':
+    acc_metric = Accuracy(task='multiclass', num_classes=10)
+
     # Parse args
     args = parser.parse_args()
     num_trials = args.num_trials
@@ -84,14 +85,14 @@ if __name__ == '__main__':
             print("-"*8)
             pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
             pretrain.fit(train_dataset,
-                        val_dataset,
-                        mbsize=128,
-                        lr=1e-3,
-                        nepochs=100,
-                        val_loss_fn=accuracy,
-                        val_loss_mode='max',
-                        loss_fn=nn.CrossEntropyLoss(),
-                        verbose=True)
+                         val_dataset,
+                         mbsize=128,
+                         lr=1e-3,
+                         nepochs=100,
+                         val_loss_fn=acc_metric,
+                         val_loss_mode='max',
+                         loss_fn=nn.CrossEntropyLoss(),
+                         verbose=True)
         
         run_description = f"max_features_50_eps_0.05_with_decay_rate_0.2_save_best_loss_with_entropy_fix_trial_{trial}"
         logger = TensorBoardLogger("logs", name=f"{run_description}")
@@ -111,19 +112,17 @@ if __name__ == '__main__':
                     verbose=False
                 )
 
-       
-
         greedy_cmi_estimator = GreedyCMIEstimatorPL(value_network, predictor, mask_layer,
-                                        lr=1e-3,
-                                        max_features=50,
-                                        eps=0.05,
-                                        loss_fn=nn.CrossEntropyLoss(reduction='none'),
-                                        val_loss_fn=accuracy,
-                                        eps_decay=True,
-                                        eps_decay_rate=0.2,
-                                        patience=5,
-                                        feature_costs=None,
-                                        use_entropy=True)
+                                                    lr=1e-3,
+                                                    max_features=50,
+                                                    eps=0.05,
+                                                    loss_fn=nn.CrossEntropyLoss(reduction='none'),
+                                                    val_loss_fn=acc_metric,
+                                                    eps_decay=True,
+                                                    eps_decay_rate=0.2,
+                                                    patience=5,
+                                                    feature_costs=None,
+                                                    use_entropy=True)
 
         # Set up data loaders.
         train_dataloader = DataLoader(

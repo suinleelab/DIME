@@ -1,14 +1,11 @@
 # Traing full input
-import sys
 from torchvision import transforms
 import argparse
-from dime.data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
 import timm
-from dime.utils import accuracy, auc, normalize
+from torchmetrics import Accuracy
 from torchvision.datasets import ImageFolder
 import torch
 import torch.optim as optim
-import pandas as pd
 import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -17,20 +14,21 @@ from dime.resnet_imagenet import resnet18
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0)
-parser.add_argument('--backbone', type=str, 
-                                default='vit', 
-                                choices=['vit', 'resnet'], 
-                                help="Backbone used to train the network")
+parser.add_argument('--backbone', type=str,
+                    default='vit',
+                    choices=['vit', 'resnet'],
+                    help="Backbone used to train the network")
 
 
 if __name__ == "__main__":
-    run_description = f"vit_no_mask"
+    run_description = "vit_no_mask"
     args = parser.parse_args()
     writer = SummaryWriter(filename_suffix=run_description)
     norm_constants = ((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
     image_size = 224
     device = torch.device('cuda', args.gpu)
     dataset_path = "/projects/<labname>/<username>/ImageNet100"
+    acc_metric = Accuracy(task='multiclass', num_classes=100)
 
     # Setup for data loading.
     transforms_train = transforms.Compose([
@@ -66,13 +64,12 @@ if __name__ == "__main__":
     # Prepare dataloaders.
     mbsize = 32
     train_dataloader = DataLoader(train_dataset, batch_size=mbsize, shuffle=True, pin_memory=True,
-                            drop_last=True, num_workers=4)
+                                  drop_last=True, num_workers=4)
     val_dataloader = DataLoader(val_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
     test_dataloader = DataLoader(test_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
 
     d_in = image_size * image_size
     d_out = 100
-
 
     device = torch.device('cuda:1')
     if args.backbone == 'vit':
@@ -129,6 +126,9 @@ if __name__ == "__main__":
         
         writer.add_scalar("Loss/Train", train_batch_loss/len(train_dataloader), epoch)
         writer.add_scalar("Loss/Val", val_batch_loss/len(val_dataloader), epoch)
-        writer.add_scalar("Performance/Val", accuracy(torch.cat(val_y_list), torch.cat(val_pred_list)), epoch)
+        writer.add_scalar("Performance/Val", acc_metric(torch.cat(val_y_list), torch.cat(val_pred_list)), epoch)
 
-        print(f"Epoch: {epoch}, Train Loss: {train_batch_loss/len(train_dataloader)}, Val Loss: {val_batch_loss/len(val_dataloader)}, Val Performance: {accuracy(torch.cat(val_y_list), torch.cat(val_pred_list))}")
+        print(f"Epoch: {epoch}, \
+             Train Loss: {train_batch_loss/len(train_dataloader)}, \
+             Val Loss: {val_batch_loss/len(val_dataloader)}, \
+             Val Performance: {acc_metric(torch.cat(val_y_list), torch.cat(val_pred_list))}")

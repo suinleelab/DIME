@@ -180,12 +180,11 @@ class DifferentiableSelector(nn.Module):
             if verbose:
                 print(f'Stopping temp = {temp:.4f} at epoch {epoch+1}\n')
             total_epochs += (epoch + 1)
-            
 
             # Copy parameters from best model.
             restore_parameters(model, best_model)
             restore_parameters(selector_layer, best_selector)
-        
+
         torch.save(best_zerotemp_model.state_dict(), f'results/best_zero_temp_model.pth')
         # Copy parameters from best model with zero temperature.
         restore_parameters(model, best_zerotemp_model)
@@ -205,7 +204,7 @@ class DifferentiableSelector(nn.Module):
     def evaluate(self, loader, metric):
         '''
         Evaluate mean performance across a dataset.
-        
+
         Args:
           loader:
           metric:

@@ -3,7 +3,6 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.models
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152']
 
 # you need to download the models to ~/.torch/models
@@ -171,10 +170,12 @@ def resnet18(pretrained=False, **kwargs):
         model.load_state_dict(torch.load(os.path.join(models_dir, model_name['resnet18'])))
     return model
     
+
 def ResNet18Backbone(model):
     # Remove avgpool and fc
     backbone_modules = nn.ModuleList(model.children())[:-2]
     return nn.Sequential(*backbone_modules), model.expansion
+
 
 class UpsamplingBlock(nn.Module):
     '''Custom residual block for performing upsampling.'''
@@ -205,6 +206,7 @@ class UpsamplingBlock(nn.Module):
 
         return out
 
+
 class UpsamplingBottleneckBlock(nn.Module):
     '''Custom residual block for performing upsampling.'''
     expansion = 4
@@ -232,8 +234,6 @@ class UpsamplingBottleneckBlock(nn.Module):
         out = F.relu(self.bn1(self.conv1(x)))
         out = F.relu(self.bn2(self.conv2(out)))
         out = self.bn3(self.conv3(out))
-
-
         out += self.shortcut(x)
         out = F.relu(out)
         # print("Upsample block out shape:", out.shape)
@@ -251,7 +251,7 @@ def make_layer(block, in_planes, planes, num_blocks, stride, expansion):
             if stride != 1 or in_planes != planes * block.expansion:
                 downsample = nn.Sequential(
                     nn.Conv2d(in_planes, planes * block.expansion, kernel_size=1,
-                            stride=stride, bias=False),
+                              stride=stride, bias=False),
                     nn.BatchNorm2d(planes * block.expansion),
                 )
                 
@@ -263,6 +263,7 @@ def make_layer(block, in_planes, planes, num_blocks, stride, expansion):
                 layers.append(UpsamplingBottleneckBlock(in_planes, planes))
         in_planes = planes * block.expansion
     return nn.Sequential(*layers)
+
 
 class Predictor(nn.Module):
     def __init__(self, backbone, expansion, num_classes=10):
@@ -284,6 +285,7 @@ class Predictor(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.fc(x)
         return x
+
 
 class ValueNetwork(nn.Module):
     def __init__(self, backbone, expansion=1, block_layer_stride=0.5, use_entropy=True):

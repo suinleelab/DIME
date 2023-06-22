@@ -3,25 +3,20 @@ import pickle
 import argparse
 import numpy as np
 import torch.nn as nn
-from torchmetrics import AUROC
-from sklearn.metrics import accuracy_score
-from torch.utils.data import DataLoader, random_split
-from os import path
-from dime.data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split, get_mlp_network
-from dime.masking_pretrainer import MaskingPretrainer
-from dime.utils import accuracy, auc, normalize, StaticMaskLayer1d, MaskLayer, ConcreteMask, get_confidence
+from torch.utils.data import DataLoader
+from dime.data_utils import get_xy, get_mlp_network
+from dime import MaskingPretrainer
+from dime.utils import StaticMaskLayer1d, MaskLayer, ConcreteMask, get_confidence
 from torchvision import transforms
 from torchmetrics import Accuracy
 from torchvision.datasets import MNIST
-import sys
-sys.path.append('../')
-from baselines import  eddi, pvae, iterative, dfs, cae
-sys.path.append('../../')
-from baseline_models.base_model import BaseModel
 import torch.optim as optim
 from tqdm import tqdm
-
-#from baselines import EDDI, PVAE
+import sys
+sys.path.append('../')
+from baselines import eddi, pvae, iterative, dfs, cae
+sys.path.append('../../')
+from baseline_models.base_model import BaseModel
 
 # Set up command line arguments
 parser = argparse.ArgumentParser()
@@ -71,8 +66,6 @@ if __name__ == '__main__':
     max_features = 35
     mbsize = 128
     
-
-
     for trial in range(num_trials):
 
         results_dict = {
@@ -173,9 +166,8 @@ if __name__ == '__main__':
             # Set up EDDI feature selection object.
             eddi_selector = eddi.EDDI(pv, model, mask_layer).to(device)
             
-            
             # Evaluate.
-            metrics_dict, cost_dict = eddi_selector.evaluate_multiple(test_dataloader, num_features, accuracy, verbose=False)
+            metrics_dict, cost_dict = eddi_selector.evaluate_multiple(test_dataloader, num_features, acc_metric, verbose=False)
             for num in num_features:
                 acc = metrics_dict[num]
                 results_dict['acc'][num] = acc
@@ -185,47 +177,47 @@ if __name__ == '__main__':
         
         if args.method == 'dfs':
             # Prepare networks.
-                predictor = get_mlp_network(d_in * 2, d_out)
-                selector = get_mlp_network(d_in * 2, d_in)
+            predictor = get_mlp_network(d_in * 2, d_out)
+            selector = get_mlp_network(d_in * 2, d_in)
 
-                # Pretrain predictor
-                mask_layer = MaskLayer(append=True)
-                pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
-                pretrain.fit(
-                    train_dataset,
-                    val_dataset,
-                    mbsize,
-                    lr=1e-3,
-                    nepochs=100,
-                    loss_fn=nn.CrossEntropyLoss(),
-                    patience=5,
-                    verbose=True)
+            # Pretrain predictor
+            mask_layer = MaskLayer(append=True)
+            pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
+            pretrain.fit(
+                train_dataset,
+                val_dataset,
+                mbsize,
+                lr=1e-3,
+                nepochs=100,
+                loss_fn=nn.CrossEntropyLoss(),
+                patience=5,
+                verbose=True)
 
-                # Train selector and predictor jointly.
-                gdfs = dfs.GreedyDynamicSelection(selector, predictor, mask_layer).to(device)
-                gdfs.fit(
-                    train_dataloader,
-                    val_dataloader,
-                    lr=1e-3,
-                    nepochs=100,
-                    max_features=max_features,
-                    loss_fn=nn.CrossEntropyLoss(),
-                    patience=5,
-                    verbose=True)
+            # Train selector and predictor jointly.
+            gdfs = dfs.GreedyDynamicSelection(selector, predictor, mask_layer).to(device)
+            gdfs.fit(
+                train_dataloader,
+                val_dataloader,
+                lr=1e-3,
+                nepochs=100,
+                max_features=max_features,
+                loss_fn=nn.CrossEntropyLoss(),
+                patience=5,
+                verbose=True)
 
-                # Evaluate.
-                for num in num_features:
-                    acc = gdfs.evaluate(test_dataloader, num, acc_metric)
-                    results_dict['acc'][num] = acc
-                    print(f'Num = {num}, Acc = {100*acc:.2f}')
-                    
-                # Save model
-                gdfs.cpu()
-                torch.save(gdfs, f'results/mnist_{args.method}_trial_{trial}.pt')
+            # Evaluate.
+            for num in num_features:
+                acc = gdfs.evaluate(test_dataloader, num, acc_metric)
+                results_dict['acc'][num] = acc
+                print(f'Num = {num}, Acc = {100*acc:.2f}')
+                
+            # Save model
+            gdfs.cpu()
+            torch.save(gdfs, f'results/mnist_{args.method}_trial_{trial}.pt')
 
         # Train with full input
         if args.method == 'fully_supervised':
-            model  = get_mlp_network(d_in, d_out).to(device)
+            model = get_mlp_network(d_in, d_out).to(device)
             opt = optim.Adam(model.parameters(), lr=1e-3)
             criterion = torch.nn.CrossEntropyLoss()
             scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -280,9 +272,8 @@ if __name__ == '__main__':
                         print(f'Stopping early at epoch {epoch+1}')
                         break
     
-                print(f"Epoch: {epoch}, Train Loss: {train_batch_loss/len(train_dataloader)}, Val Loss: {val_batch_loss/len(val_dataloader)}, Val Performance: {accuracy(torch.cat(val_pred_list), torch.cat(val_y_list))}")
+                print(f"Epoch: {epoch}, Train Loss: {train_batch_loss/len(train_dataloader)}, Val Loss: {val_batch_loss/len(val_dataloader)}, Val Performance: {acc_metric(torch.cat(val_pred_list), torch.cat(val_y_list))}")
             
-
             print("Evaluating on test set")
             
             model.eval()
@@ -299,7 +290,7 @@ if __name__ == '__main__':
 
                 confidence_list.append(get_confidence(pred.cpu()))
             
-            print(f"Test Performance:{accuracy(torch.cat(test_pred_list), torch.cat(test_y_list))}")
+            print(f"Test Performance:{acc_metric(torch.cat(test_pred_list), torch.cat(test_y_list))}")
             with open('confidence.npy', 'wb') as f:
                 np.save(f, np.array(torch.cat(confidence_list).detach().numpy()))
 

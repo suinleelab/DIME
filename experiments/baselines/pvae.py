@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from dime.utils import generate_uniform_mask, restore_parameters
-from dime.data_utils import MaskLayerGrouped
 from torch.distributions.normal import Normal
 from torch.distributions.bernoulli import Bernoulli
 from tqdm import tqdm
@@ -55,7 +54,7 @@ class PVAE(nn.Module):
         mean = latent[:, :dims]
         std = torch.exp(latent[:, dims:])
         eps = torch.randn(mean.shape[0], self.num_samples, mean.shape[1], device=mean.device)
-        z =  torch.unsqueeze(mean, 1) + eps * torch.unsqueeze(std, 1)
+        z = torch.unsqueeze(mean, 1) + eps * torch.unsqueeze(std, 1)
     
         # Decode and return.
         recon = self.decoder(z)

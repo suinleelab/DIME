@@ -4,15 +4,13 @@ import argparse
 import numpy as np
 import torch.nn as nn
 from torchmetrics import AUROC
-from sklearn.metrics import accuracy_score
 from torch.utils.data import DataLoader, random_split
 from os import path
 import pandas as pd
 import feature_groups
-from dime.data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split
-from dime.masking_pretrainer import MaskingPretrainer
-from dime.greedy_model_pl import GreedyCMIEstimatorPL
-from dime.utils import accuracy, auc, normalize
+from dime.data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped
+from dime import MaskingPretrainer
+from dime import GreedyCMIEstimatorPL
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -29,10 +27,10 @@ if __name__ == '__main__':
 
     # Parse args
     args = parser.parse_args()
-    # cols_to_drop = [str(x) for x in range(len(intub_feature_names)) if str(x) not in ['98', '104', '107', '108', '109', '110']]
     cols_to_drop = []
     if cols_to_drop is not None:
-        intub_feature_names = [item for item in intub_feature_names if str(intub_feature_names.index(item)) not in cols_to_drop]
+        intub_feature_names = [item for item in intub_feature_names if str(intub_feature_names.index(item))
+                               not in cols_to_drop]
 
     # Load dataset
     dataset = DenseDatasetSelected('data/intub.csv', cols_to_drop=cols_to_drop)
@@ -113,16 +111,16 @@ if __name__ == '__main__':
             # Pretrain predictor
             pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
             pretrain.fit(train_dataset,
-                        val_dataset,
-                        mbsize=128,
-                        lr=1e-3,
-                        nepochs=100,
-                        loss_fn=nn.CrossEntropyLoss(),
-                        val_loss_fn=auc,
-                        val_loss_mode='max',
-                        patience=5,
-                        verbose=True,
-                        trained_predictor_name=trained_predictor_name)
+                         val_dataset,
+                         mbsize=128,
+                         lr=1e-3,
+                         nepochs=100,
+                         loss_fn=nn.CrossEntropyLoss(),
+                         val_loss_fn=AUROC(task='multiclass', num_classes=2),
+                         val_loss_mode='max',
+                         patience=5,
+                         verbose=True,
+                         trained_predictor_name=trained_predictor_name)
 
         # Set up data loaders.
         train_dataloader = DataLoader(
@@ -141,15 +139,13 @@ if __name__ == '__main__':
 
         if args.use_feature_costs:
             feature_cost_df = pd.read_csv("data/feature_list_intub-nw.csv")
-            feature_costs = [feature_cost_df[feature_cost_df['Feature Name'] == feature]['Cost (Hours)'].item() for feature in list(feature_groups_dict.keys())]
-
-
-        print(feature_costs)
+            feature_costs = [feature_cost_df[feature_cost_df['Feature Name'] == feature]['Cost (Hours)'].item() for feature
+                             in list(feature_groups_dict.keys())]
 
         # Jointly train value network and predictor
         print("Training CMI estimator")
         print("-"*8)
-        run_description = f"max_features_40_eps_0.0_with_decay_rate_0.2_use_entropy_feature_cost_{use_feature_costs}_trial_{trial}"
+        run_description = f"max_features_40_with_decay_rate_0.2_use_entropy_feature_cost_{use_feature_costs}_trial_{trial}"
         logger = TensorBoardLogger("logs", name=f"{run_description}")
 
         checkpoint_callback = ModelCheckpoint(
@@ -169,28 +165,25 @@ if __name__ == '__main__':
                 )
 
         greedy_cmi_estimator = GreedyCMIEstimatorPL(value_network, predictor, mask_layer,
-                                        lr=1e-3,
-                                        min_lr=1e-6,
-                                        max_features=40,
-                                        eps=0.0,
-                                        loss_fn=nn.CrossEntropyLoss(reduction='none'),
-                                        val_loss_fn=auc,
-                                        eps_decay=True,
-                                        eps_decay_rate=0.2,
-                                        patience=5,
-                                        feature_costs=feature_costs,
-                                        use_entropy=True)
+                                                    lr=1e-3,
+                                                    min_lr=1e-6,
+                                                    max_features=40,
+                                                    eps=0.0,
+                                                    loss_fn=nn.CrossEntropyLoss(reduction='none'),
+                                                    val_loss_fn=AUROC(task='multiclass', num_classes=2),
+                                                    eps_decay=True,
+                                                    eps_decay_rate=0.2,
+                                                    patience=5,
+                                                    feature_costs=feature_costs,
+                                                    use_entropy=True)
 
-        trainer = Trainer(
-                    accelerator='gpu',
-                    devices=[args.gpu],
-                    max_epochs=100,
-                    precision=16,
-                    logger=logger,
-                    num_sanity_val_steps=0,
-                    callbacks=[checkpoint_callback],
-                    log_every_n_steps=10
-                )
+        trainer = Trainer(accelerator='gpu',
+                          devices=[args.gpu],
+                          max_epochs=100,
+                          precision=16,
+                          logger=logger,
+                          num_sanity_val_steps=0,
+                          callbacks=[checkpoint_callback],
+                          log_every_n_steps=10)
 
         trainer.fit(greedy_cmi_estimator, train_dataloader, val_dataloader)
-    
