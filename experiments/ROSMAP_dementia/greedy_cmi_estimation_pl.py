@@ -1,19 +1,16 @@
 import torch
 import feature_groups
-import pickle
 import argparse
 import numpy as np
 import torch.nn as nn
 from torchmetrics import AUROC
-from sklearn.metrics import accuracy_score
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 import os
 from os import path
 import pandas as pd
-from dime.data_utils import ROSMAPDataset, get_group_matrix, get_xy, MaskLayerGrouped, data_split
-from dime.masking_pretrainer import MaskingPretrainer#, GreedyCMIEstimator
-from dime.greedy_model_pl import GreedyCMIEstimatorPL
-from dime.utils import accuracy, auc, normalize
+from dime.data_utils import ROSMAPDataset, get_group_matrix, MaskLayerGrouped
+from dime import MaskingPretrainer
+from dime import GreedyCMIEstimatorPL
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -35,11 +32,12 @@ if __name__ == '__main__':
     # cols_to_drop = [str(x) for x in range(len(fib_feature_names)) if str(x) not in ['98', '104', '107', '108', '109', '110']]
     cols_to_drop = []
     if cols_to_drop is not None:
-        rosmap_feature_names = [item for item in rosmap_feature_names if str(rosmap_feature_names.index(item)) not in cols_to_drop]
+        rosmap_feature_names = [item for item in rosmap_feature_names if str(rosmap_feature_names.index(item)) 
+                                not in cols_to_drop]
         
     # Load dataset
     train_dataset = ROSMAPDataset('./data', split='train', cols_to_drop=cols_to_drop, use_apoe=args.use_apoe)
-    d_in = train_dataset.X.shape[1]  
+    d_in = train_dataset.X.shape[1]
     d_out = len(np.unique(train_dataset.Y))
 
     val_dataset = ROSMAPDataset('./data', split='val', cols_to_drop=cols_to_drop, use_apoe=args.use_apoe)
@@ -53,7 +51,7 @@ if __name__ == '__main__':
         if args.use_apoe:
             feature_costs = df[1].tolist()
         else:
-            feature_costs = df[~df[0].isin(['apoe4_1copy','apoe4_2copies'])][1].tolist()
+            feature_costs = df[~df[0].isin(['apoe4_1copy', 'apoe4_2copies'])][1].tolist()
 
     # Get features and groups
     feature_groups_dict, feature_groups_mask = get_group_matrix(rosmap_feature_names, rosmap_feature_groups)
@@ -110,16 +108,16 @@ if __name__ == '__main__':
             # Pretrain predictor
             pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
             pretrain.fit(train_dataset,
-                        val_dataset,
-                        mbsize=128,
-                        lr=1e-3,
-                        nepochs=100,
-                        loss_fn=nn.CrossEntropyLoss(),
-                        val_loss_fn=auc,
-                        val_loss_mode='max',
-                        patience=5,
-                        verbose=True,
-                        trained_predictor_name=trained_predictor_name)
+                         val_dataset,
+                         mbsize=128,
+                         lr=1e-3,
+                         nepochs=100,
+                         loss_fn=nn.CrossEntropyLoss(),
+                         val_loss_fn=AUROC(task='multiclass', num_classes=2),
+                         val_loss_mode='max',
+                         patience=5,
+                         verbose=True,
+                         trained_predictor_name=trained_predictor_name)
 
         # Set up data loaders.
         train_dataloader = DataLoader(
@@ -137,7 +135,7 @@ if __name__ == '__main__':
         # Train CMI estimator
         print("Training CMI estimator")
         print("-"*8)
-        run_description = f"max_features_15_use_apoe_{args.use_apoe}_eps_0.05_with_decay_rate_0.2_use_entropy_{args.use_feature_costs}_trial_num_{trial_num}"
+        run_description = f"max_feature_15_apoe_{args.use_apoe}_ep_0.05_decay_0.2_{args.use_feature_costs}_trial_{trial_num}"
         logger = TensorBoardLogger("logs", name=f"{run_description}")
 
         checkpoint_callback_perf = ModelCheckpoint(
@@ -157,17 +155,17 @@ if __name__ == '__main__':
                 )
 
         greedy_cmi_estimator = GreedyCMIEstimatorPL(value_network, predictor, mask_layer,
-                                        lr=1e-3,
-                                        min_lr=1e-6,
-                                        max_features=15,
-                                        eps=0.05,
-                                        loss_fn=nn.CrossEntropyLoss(reduction='none'),
-                                        val_loss_fn=auc,
-                                        eps_decay=True,
-                                        eps_decay_rate=0.2,
-                                        patience=5,
-                                        feature_costs=None,
-                                        use_entropy=True)
+                                                    lr=1e-3,
+                                                    min_lr=1e-6,
+                                                    max_features=15,
+                                                    eps=0.05,
+                                                    loss_fn=nn.CrossEntropyLoss(reduction='none'),
+                                                    val_loss_fn=AUROC(task='multiclass', num_classes=2),
+                                                    eps_decay=True,
+                                                    eps_decay_rate=0.2,
+                                                    patience=5,
+                                                    feature_costs=None,
+                                                    use_entropy=True)
 
         trainer = Trainer(
                     accelerator='gpu',
@@ -181,4 +179,3 @@ if __name__ == '__main__':
                 )
 
         trainer.fit(greedy_cmi_estimator, train_dataloader, val_dataloader)
-    

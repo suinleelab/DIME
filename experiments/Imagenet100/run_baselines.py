@@ -1,26 +1,24 @@
+import sys
 import torch
 import pickle
 import argparse
 import numpy as np
 import torch.nn as nn
-from torchmetrics import AUROC
 from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader, random_split
-from dime.data_utils import MaskLayer2d, get_mlp_network
+from torch.utils.data import DataLoader
+from dime.data_utils import MaskLayer2d
 from dime.vit import PredictorViT, SelectorViT
-from dime.masking_pretrainer import MaskingPretrainer
-from dime.utils import accuracy, auc, normalize, StaticMaskLayer2d, ConcreteMask2d
-import sys
-sys.path.append('../')
-from baselines import cae, hardattention, dfs
-sys.path.append('../../')
-from baseline_models.base_model import BaseModel
-from baseline_models.hard_attention_model import HardAttention
+from dime import MaskingPretrainer
+from dime.utils import StaticMaskLayer2d, ConcreteMask2d
 from torchvision import transforms
 from torchmetrics import Accuracy
 import timm
+sys.path.append('../')
+sys.path.append('../../')
+from baselines import cae, hardattention, dfs
+from baseline_models.base_model import BaseModel
+from baseline_models.hard_attention_model import HardAttention
 
-#from baselines import EDDI, PVAE
 vit_model_options = ['vit_small_patch16_224', 'vit_tiny_patch16_224', 'vit_base_patch16_224']
 resnet_model_options = ['resnet18', 'resnet34', 'resnet50', 'resnet101']
 
@@ -29,20 +27,20 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--method', type=str, default='cae',
                     choices=['cae', 'hard_attn', 'dfs'])
-parser.add_argument('--mask_width', type=int, 
-                                default=14, 
-                                choices=[7, 14], 
-                                help="Mask width to use in the mask layer")
-parser.add_argument('--pretrained_model_name', type=str, 
-                                default='vit_small_patch16_224', 
-                                choices=vit_model_options+resnet_model_options, 
-                                help="Name of the pretrained model to use")
-parser.add_argument('--pretrain_checkpoint', type=str, 
-                                default=None,
-                                help="Name of the pretrained checkpoint to use")
-parser.add_argument('--training_phase', type=str, 
-                                default='first',
-                                help="Name of the trianing phase")
+parser.add_argument('--mask_width', type=int,
+                    default=14,
+                    choices=[7, 14],
+                    help="Mask width to use in the mask layer")
+parser.add_argument('--pretrained_model_name', type=str,
+                    default='vit_small_patch16_224',
+                    choices=vit_model_options+resnet_model_options,
+                    help="Name of the pretrained model to use")
+parser.add_argument('--pretrain_checkpoint', type=str,
+                    default=None,
+                    help="Name of the pretrained checkpoint to use")
+parser.add_argument('--training_phase', type=str,
+                    default='first',
+                    help="Name of the trianing phase")
 
 if __name__ == '__main__':
     # Parse args
@@ -60,7 +58,6 @@ if __name__ == '__main__':
         
     device = torch.device('cuda', args.gpu)
     dataset_path = "/projects/<labname>/<username>/ImageNet100"
-
 
     norm_constants = ((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
 
@@ -116,7 +113,7 @@ if __name__ == '__main__':
     # Prepare dataloaders.
     mbsize = 32
     train_dataloader = DataLoader(train_dataset, batch_size=mbsize, shuffle=True, pin_memory=True,
-                            drop_last=True, num_workers=4)
+                                  drop_last=True, num_workers=4)
     val_dataloader = DataLoader(val_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
     test_dataloader = DataLoader(test_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
 
@@ -135,11 +132,10 @@ if __name__ == '__main__':
     if args.method == 'cae':
         num_restarts = 1
         
-        
         for num in num_features:
             # Train model with differentiable feature selection.
             backbone = timm.create_model(pretrained_model_name, pretrained=True)
-            model =  PredictorViT(backbone, num_classes=100)
+            model = PredictorViT(backbone, num_classes=100)
             # model = get_mlp_network(d_in, d_out)
             selector_layer = ConcreteMask2d(mask_width, patch_size, num)
             diff_selector = cae.DifferentiableSelector(model, selector_layer).to(device)
@@ -171,7 +167,7 @@ if __name__ == '__main__':
             for _ in range(num_restarts):
                 # Train model.
                 backbone = timm.create_model('vit_small_patch16_224', pretrained=True)
-                predictor =  PredictorViT(backbone, num_classes=100)
+                predictor = PredictorViT(backbone, num_classes=100)
                 model = nn.Sequential(mask_layer, predictor)
                 basemodel = BaseModel(model).to(device)
                 basemodel.fit(
@@ -213,30 +209,31 @@ if __name__ == '__main__':
         training_phase = args.training_phase
 
         # overwrite ccebal for first two training phases
-        if training_phase=='first':
-            ccebal=1
-        elif training_phase=='second':
-            ccebal=0
-        elif training_phase=='third':
-            ccebal=16
+        if training_phase == 'first':
+            ccebal = 1
+        elif training_phase == 'second':
+            ccebal = 0
+        elif training_phase == 'third':
+            ccebal = 16
 
         model = HardAttention(T, nsfL, nf, nh, nz, classes, gz, imsz, ccebal, training_phase, args.pretrain_checkpoint).to(device)
-        hardattention.HardAttentionTrainer(model, 
-                                            T, device, 
-                                            train_dataloader, 
-                                            val_dataloader,
-                                            test_dataloader, 
-                                            nepochs=500, 
-                                            lr=0.001, 
-                                            tensorboard_file_name_suffix="hard_attn_logs", 
-                                            path="hard_attn_results", 
-                                            training_phase=training_phase)
+        hardattention.HardAttentionTrainer(model,
+                                           T,
+                                           device,
+                                           train_dataloader,
+                                           val_dataloader,
+                                           test_dataloader,
+                                           nepochs=500,
+                                           lr=0.001,
+                                           tensorboard_file_name_suffix="hard_attn_logs",
+                                           path="hard_attn_results",
+                                           training_phase=training_phase)
 
     elif args.method == 'dfs':
         max_features = 50
         mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         backbone = timm.create_model(pretrained_model_name, pretrained=True)
-        predictor =  PredictorViT(backbone, num_classes=num_classes)
+        predictor = PredictorViT(backbone, num_classes=num_classes)
         selector = SelectorViT(backbone)
 
         # Pretrain predictor
@@ -270,7 +267,7 @@ if __name__ == '__main__':
             acc = gdfs.evaluate(test_dataloader, num, acc_metric)
             results_dict['acc'][num] = acc
             print(f'Num = {num}, Acc = {100*acc:.2f}')
-        
+       
         print(results_dict)
         with open(f'results/Imagenet100_{args.method}.pkl', 'wb') as f:
             pickle.dump(results_dict, f)

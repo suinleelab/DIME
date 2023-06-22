@@ -4,8 +4,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from copy import deepcopy
 from dime.utils import generate_uniform_mask, restore_parameters
-import numpy as np
 from tqdm import tqdm
+
 
 class MaskingPretrainer(nn.Module):
     '''Pretrain model with missing features.'''
@@ -29,8 +29,7 @@ class MaskingPretrainer(nn.Module):
             min_lr=1e-6,
             early_stopping_epochs=None,
             verbose=True,
-            trained_predictor_name='predictor.pth',
-            semi_supervised=False):
+            trained_predictor_name='predictor.pth'):
         '''
         Train model.
         
@@ -111,10 +110,7 @@ class MaskingPretrainer(nn.Module):
                 # m = torch.ones(len(x), mask_size).to(device)
                 # Calculate loss.
                 x_masked = mask_layer(x, m)
-                if not semi_supervised:
-                    pred = model(x_masked)
-                else:
-                    pred = model(x_masked, x_sketch)
+                pred = model(x_masked)
 
                 loss = loss_fn(pred, y)
 
@@ -142,16 +138,11 @@ class MaskingPretrainer(nn.Module):
                     x = x.to(device)
                     
                     # Generate missingness.
-                    # TODO this should be precomputed and shared across epochs
                     m = generate_uniform_mask(len(x), mask_size).to(device)
-                    # m = torch.ones(len(x), mask_size).to(device)
 
                     # Calculate prediction.
                     x_masked = mask_layer(x, m)
-                    if not semi_supervised:
-                        pred = model(x_masked)
-                    else:
-                        pred = model(x_masked, x_sketch.detach())
+                    pred = model(x_masked)
 
                     pred_list.append(pred.cpu())
                     label_list.append(y.cpu())
@@ -161,7 +152,6 @@ class MaskingPretrainer(nn.Module):
                 pred = torch.cat(pred_list, 0)
                 val_loss = loss_fn(pred, y).item()
                 
-            
             # Print progress.
             if verbose:
                 print(f'{"-"*8}Epoch {epoch+1}{"-"*8}')

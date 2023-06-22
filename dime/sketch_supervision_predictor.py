@@ -2,7 +2,6 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 from dime.utils import get_entropy, get_confidence, selection_without_lamda
-import numpy as np
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
@@ -11,6 +10,7 @@ def ind_to_onehot(inds, n):
     onehot = torch.zeros(len(inds), n, dtype=torch.float32, device=inds.device)
     onehot[torch.arange(len(inds)), inds] = 1
     return onehot
+
 
 class SketchSupervisionPredictor(nn.Module):
     def __init__(self, value_network, trained_predictor, sketch_predictor, mask_layer):
@@ -50,7 +50,6 @@ class SketchSupervisionPredictor(nn.Module):
         writer = SummaryWriter(filename_suffix=tensorboard_file_name_suffix)
 
         device = next(trained_predictor.parameters()).device
-        mse_loss_fn = nn.MSELoss(reduction='none')
 
         # For tracking best model.
         # best_value_network = None
@@ -64,8 +63,6 @@ class SketchSupervisionPredictor(nn.Module):
         num_steps = 1
         best_val_loss_fn_output = 0
         global_step = 0
-        best_predictor = None
-        best_value_network = None
 
         # Determine mask size.
         if hasattr(mask_layer, 'mask_size') and (mask_layer.mask_size is not None):
@@ -111,7 +108,7 @@ class SketchSupervisionPredictor(nn.Module):
                 sketch_predictor.zero_grad()
 
                 # Create feature cost matrix on first iteration
-                if epoch==0 and i==0 and num_steps==1:
+                if epoch == 0 and i == 0 and num_steps == 1:
                     if feature_costs is None:
                         feature_costs = torch.ones((len(x), mask_size), device=device)
                     else:
@@ -130,8 +127,8 @@ class SketchSupervisionPredictor(nn.Module):
                 for _ in range(max_features):
                     # Estimate CMI using value network
                     x_masked = mask_layer(x, m_hard)
-                    pred_CMI = value_network(x_masked) * torch.tensor(get_entropy(pred_without_next_feature.detach()), device=device).unsqueeze(1) \
-                                        if use_entropy else value_network(x_masked)
+                    pred_CMI = value_network(x_masked) * torch.tensor(get_entropy(pred_without_next_feature.detach()),
+                        device=device).unsqueeze(1) if use_entropy else value_network(x_masked)
 
                     if lamda is None:
                         best = torch.argmax(pred_CMI/feature_costs, dim=1)
@@ -188,8 +185,8 @@ class SketchSupervisionPredictor(nn.Module):
                         # Estimate CMI using value network
                         x_masked = mask_layer(x, m_hard)
                         pred_without_next_feature = trained_predictor(x_masked)
-                        pred_CMI = value_network(x_masked) * torch.tensor(get_entropy(pred_without_next_feature.detach()), device=device).unsqueeze(1) \
-                                if use_entropy else value_network(x_masked)
+                        pred_CMI = value_network(x_masked) * torch.tensor(get_entropy(pred_without_next_feature.detach()),
+                                                                          device=device).unsqueeze(1) if use_entropy else value_network(x_masked)
 
                         # Select next feature and ensure no repeats
                         pred_CMI -= 1e6 * m_hard
@@ -222,20 +219,19 @@ class SketchSupervisionPredictor(nn.Module):
             pred_loss_epoch_train = sum(batch_pred_loss) / len(train_dataloader)
             pred_loss_epoch_val = sum(batch_pred_loss_val) / len(val_dataloader)
             if epoch % 1 == 0:
-                value_network_loss_epoch_train = sum(batch_value_network_loss) / len(train_dataloader)
                 print(f"Epoch: {epoch} Predictor Loss Train: {pred_loss_epoch_train}")
                 print(f"Predictor Loss Val: {pred_loss_epoch_val} {val_loss_fn.__name__}:{val_loss_fn_output}")
                 writer.add_scalar("Predictor Loss/Train", pred_loss_epoch_train, global_step)
                 writer.add_scalar("Predictor Loss/Val", pred_loss_epoch_val, global_step)
                 writer.add_scalar("Predictor AUC/Val", val_loss_fn_output, global_step)
 
-
             scheduler.step(pred_loss_epoch_val)
             global_step += 1
 
             if val_loss_fn_output > best_val_loss_fn_output:
                 best_val_loss_fn_output = val_loss_fn_output
-                torch.save(sketch_predictor.state_dict(), f'results/sketch_predictor_trained_{tensorboard_file_name_suffix}.pth')
+                torch.save(sketch_predictor.state_dict(), 
+                           f'results/sketch_predictor_trained_{tensorboard_file_name_suffix}.pth')
 
                 value_network.to(device)
             
@@ -244,26 +240,6 @@ class SketchSupervisionPredictor(nn.Module):
                 num_bad_epochs = 0
             else:
                 num_bad_epochs += 1
-
-            # if num_bad_epochs > patience + 1:
-            #     if eps_decay:
-            #         # Val loss not improving, reduce epsilon and reset learning rate
-            #         print("Decaying eps")
-            #         print(f"Old eps: {eps}")
-            #         # eps = eps * ((1 - eps_decay_rate) ** time)
-            #         # time += 5
-            #         eps *= 0.5
-            #         print(f"New eps: {eps}")
-            #         for g in opt.param_groups:
-            #             g['lr'] = 1e-3
-            #         num_bad_epochs = 0
-            #     # else:
-            #     #     if verbose:
-            #     #         print(f'Stopping early at epoch {epoch+1}')
-            #     #     break
-
-            # if eps < min_eps and eps_decay:
-            #     break
 
             if num_bad_epochs > early_stopping_epochs:
                 # Val loss is not improving, decay epsilon and restart training
@@ -274,11 +250,11 @@ class SketchSupervisionPredictor(nn.Module):
                 
             writer.flush()
         
-    def evaluate(self, 
-                 test_dataloader, 
-                 performance_func, 
-                 feature_costs=None, 
-                 selection_func=selection_without_lamda, 
+    def evaluate(self,
+                 test_dataloader,
+                 performance_func,
+                 feature_costs=None,
+                 selection_func=selection_without_lamda,
                  evaluation_mode="lamda-penalty",
                  use_entropy=True,
                  semi_supervised=False,
@@ -286,7 +262,7 @@ class SketchSupervisionPredictor(nn.Module):
         '''
         Evaluate the value network and get predictions with stopping criteria
         '''
-        #setup
+        # setup
         value_network = self.value_network
         predictor = self.trained_predictor
         sketch_predictor = self.sketch_predictor
@@ -317,7 +293,6 @@ class SketchSupervisionPredictor(nn.Module):
         loss_dict = {}
 
         with torch.no_grad():
-            batch_loss = 0
             # Val step
             for i, batch in enumerate(tqdm(test_dataloader)):
                 if len(batch) == 2:
@@ -330,7 +305,7 @@ class SketchSupervisionPredictor(nn.Module):
                 y = y.to(device)
                 
                 # Create feature cost matrix on first iteration
-                if i==0:
+                if i == 0:
                     if feature_costs is None:
                         feature_costs = torch.ones((len(x), mask_size), device=device)
                     else:
@@ -340,7 +315,7 @@ class SketchSupervisionPredictor(nn.Module):
                 m_hard = torch.zeros(len(x), mask_size, dtype=x.dtype, device=device)
                 budget_exhausted = False
                 accept_sample = torch.full((x.shape[0],), True, device=device)
-                budget_not_used_up =  torch.full((x.shape[0],), True, device=device)
+                budget_not_used_up = torch.full((x.shape[0],), True, device=device)
                 iteration = 0
 
                 while not budget_exhausted:
@@ -351,14 +326,8 @@ class SketchSupervisionPredictor(nn.Module):
                     pred = predictor(x_masked)
 
                     pred_CMI = value_network(x_masked) * torch.tensor(get_entropy(pred.detach()), device=device).unsqueeze(1) \
-                                        if use_entropy else value_network(x_masked)
-                    # else:
-                    #     pred = predictor(x_masked, x_sketch)
-
-                    #     pred_CMI = value_network(x_masked, x_sketch) * torch.tensor(get_entropy(pred.detach()), device=device).unsqueeze(1) \
-                    #                         if use_entropy else value_network(x_masked, x_sketch)
+                        if use_entropy else value_network(x_masked)
                     
-
                     if iteration not in pred_cmi_dict:
                         pred_cmi_dict[iteration] = [pred_CMI.cpu()]
                     else:
@@ -460,7 +429,8 @@ class SketchSupervisionPredictor(nn.Module):
 
                         # Select samples for which minimum entropy has not been reached yet
                         min_entropy_not_reached = entropies > min_entropy
-                        accept_sample = torch.bitwise_and(accept_sample, torch.tensor(min_entropy_not_reached, device=device))
+                        accept_sample = torch.bitwise_and(accept_sample,
+                                                          torch.tensor(min_entropy_not_reached, device=device))
 
                         best_feature_index = selection_func(pred_CMI, feature_costs, None)
                         hard = ind_to_onehot(best_feature_index, mask_size)
@@ -525,7 +495,6 @@ class SketchSupervisionPredictor(nn.Module):
                 pred_list.append(pred.cpu())
                 y_list.append(y.cpu())
 
-        # print(masks_dict[0].shape)
         # Concatenate mask dict entries
         masks_dict = dict(map(lambda kv: (kv[0], torch.cat(kv[1]).detach().numpy()), masks_dict.items()))
         pred_cmi_dict = dict(map(lambda kv: (kv[0], torch.cat(kv[1]).detach().numpy()), pred_cmi_dict.items()))

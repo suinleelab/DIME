@@ -3,21 +3,20 @@ import pickle
 import argparse
 import numpy as np
 import torch.nn as nn
-from sklearn.metrics import accuracy_score
+from torchmetrics import AUROC
 from torch.utils.data import DataLoader, random_split
 import pandas as pd
-from os import path
 import feature_groups
-from dime.data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, data_split, get_mlp_network
-from dime.masking_pretrainer import MaskingPretrainer
-from dime.utils import accuracy, auc, normalize, StaticMaskLayer1d, MaskLayer, ConcreteMask, get_confidence
-import sys
-sys.path.append('../')
-from baselines import  eddi, pvae, iterative, dfs, cae
-sys.path.append('../../')
-from baseline_models.base_model import BaseModel
+from dime.data_utils import DenseDatasetSelected, get_group_matrix, get_xy, MaskLayerGrouped, get_mlp_network
+from dime import MaskingPretrainer
+from dime.utils import StaticMaskLayer1d, ConcreteMask, get_confidence
 import torch.optim as optim
 from tqdm import tqdm
+import sys
+sys.path.append('../')
+from baselines import eddi, pvae, iterative, dfs, cae
+sys.path.append('../../')
+from baseline_models.base_model import BaseModel
 
 # Set up command line arguments
 parser = argparse.ArgumentParser()
@@ -28,6 +27,7 @@ parser.add_argument('--use_feature_costs', default=False, action="store_true")
 parser.add_argument('--num_trials', type=int, default=5)
 
 if __name__ == '__main__':
+    auc_metric = AUROC(task='multiclass', num_classes=2)
     # Parse args
     args = parser.parse_args()
     device = torch.device('cuda', args.gpu)
@@ -35,8 +35,6 @@ if __name__ == '__main__':
     intub_feature_groups = feature_groups.intub_feature_groups
 
     num_trials = args.num_trials
-
-    # cols_to_drop = [str(x) for x in range(len(intub_feature_names)) if str(x) not in ['98', '104', '107', '108', '109', '110']]
     cols_to_drop = []
     if cols_to_drop is not None:
         intub_feature_names = [item for item in intub_feature_names if str(intub_feature_names.index(item)) not in cols_to_drop]
@@ -158,7 +156,7 @@ if __name__ == '__main__':
                         best_loss = val_loss
 
                 # Evaluate using best model.
-                acc = best_model.evaluate(test_dataloader, auc)
+                acc = best_model.evaluate(test_dataloader, auc_metric)
                 results_dict['acc'][num] = acc
                 results_dict['features'][num] = selected_features
                 print(f'Num = {num}, Acc = {100*acc:.2f}')
@@ -202,7 +200,7 @@ if __name__ == '__main__':
             eddi_selector = eddi.EDDI(pv, model, mask_layer, feature_costs=feature_costs).to(device)
             
             # Evaluate.
-            metrics_dict, cost_dict = eddi_selector.evaluate_multiple(test_dataloader, num_features, auc, verbose=False)
+            metrics_dict, cost_dict = eddi_selector.evaluate_multiple(test_dataloader, num_features, auc_metric, verbose=False)
             for num in num_features:
                 acc = metrics_dict[num]
                 results_dict['acc'][num] = acc
@@ -230,7 +228,7 @@ if __name__ == '__main__':
                 val_dataset,
                 128,
                 lr=1e-3,
-                val_loss_fn=auc,
+                val_loss_fn=auc_metric,
                 val_loss_mode='max',
                 nepochs=100,
                 loss_fn=nn.CrossEntropyLoss(),
@@ -251,7 +249,7 @@ if __name__ == '__main__':
 
             # Evaluate.
             for num in num_features:
-                acc = gdfs.evaluate(test_dataloader, num, auc)
+                acc = gdfs.evaluate(test_dataloader, num, auc_metric)
                 results_dict['acc'][num] = acc
                 print(f'Num = {num}, Acc = {100*acc:.2f}')
             
@@ -264,7 +262,7 @@ if __name__ == '__main__':
         
         # Train with full input
         if args.method == 'fully_supervised':
-            model  = get_mlp_network(d_in, d_out).to(device)
+            model = get_mlp_network(d_in, d_out).to(device)
             opt = optim.Adam(model.parameters(), lr=1e-3)
             criterion = torch.nn.CrossEntropyLoss()
             scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -318,14 +316,11 @@ if __name__ == '__main__':
                     if num_bad_epochs > early_stopping_epochs:
                         print(f'Stopping early at epoch {epoch+1}')
                         break
-                
-                # writer.add_scalar("Loss/Train", train_batch_loss/len(train_dataloader), epoch)
-                # writer.add_scalar("Loss/Val", val_batch_loss/len(val_dataloader), epoch)
-                # writer.add_scalar("Performance/Val", auc(torch.cat(val_y_list), torch.cat(val_pred_list)), epoch)
 
-                print(f"Epoch: {epoch}, Train Loss: {train_batch_loss/len(train_dataloader)}, Val Loss: {val_batch_loss/len(val_dataloader)}, Val Performance: {auc(torch.cat(val_pred_list), torch.cat(val_y_list))}")
+                print(f"Epoch: {epoch}, Train Loss: {train_batch_loss/len(train_dataloader)},"
+                      + "Val Loss: {val_batch_loss/len(val_dataloader)},"
+                      + "Val Performance: {auc_metric(torch.cat(val_pred_list), torch.cat(val_y_list))}")
             
-
             print("Evaluating on test set")
             
             model.eval()
@@ -342,6 +337,6 @@ if __name__ == '__main__':
 
                 confidence_list.append(get_confidence(pred.cpu()))
             
-            print(f"Test Performance:{auc(torch.cat(test_pred_list), torch.cat(test_y_list))}")
+            print(f"Test Performance:{auc_metric(torch.cat(test_pred_list), torch.cat(test_y_list))}")
             with open('confidence.npy', 'wb') as f:
                 np.save(f, np.array(torch.cat(confidence_list).detach().numpy()))

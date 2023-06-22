@@ -1,7 +1,6 @@
 from torchvision import transforms
-from dime.data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
+from dime.data_utils import HistopathologyDownsampledEdgeDataset
 import timm
-from dime.utils import accuracy, auc, normalize
 import torch
 import torch.optim as optim
 import pandas as pd
@@ -9,15 +8,17 @@ import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
+from torchmetrics import AUROC
 
 
 if __name__ == "__main__":
-    run_description = f"vit_no_mask_canny_edge_image"
+    auc_metric = AUROC(task='multiclass', num_classes=2)
+    run_description = "vit_no_mask_canny_edge_image"
     writer = SummaryWriter(filename_suffix=run_description)
     norm_constants = ((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
     image_size = 224
 
-     # Setup for data loading.
+    # Setup for data loading.
     transforms_train = transforms.Compose([
         transforms.RandomResizedCrop(image_size),
         transforms.RandomHorizontalFlip(),
@@ -36,8 +37,10 @@ if __name__ == "__main__":
 
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')
-    train_dataset = HistopathologyDownsampledEdgeDataset(data_dir + 'images/', df.loc[df['Partition'] == 'train'], transforms_train)
-    test_dataset = HistopathologyDownsampledEdgeDataset(data_dir + 'images/', df.loc[df['Partition'] == 'test'], transforms_test)
+    train_dataset = HistopathologyDownsampledEdgeDataset(data_dir + 'images/', df.loc[df['Partition'] == 'train'],
+                                                         transforms_train)
+    test_dataset = HistopathologyDownsampledEdgeDataset(data_dir + 'images/', df.loc[df['Partition'] == 'test'],
+                                                        transforms_test)
     test_dataset_len = len(test_dataset)
 
     # Split test dataset into val
@@ -51,10 +54,9 @@ if __name__ == "__main__":
     # Prepare dataloaders.
     mbsize = 32
     train_dataloader = DataLoader(train_dataset, batch_size=mbsize, shuffle=True, pin_memory=True,
-                            drop_last=True, num_workers=4)
+                                  drop_last=True, num_workers=4)
     val_dataloader = DataLoader(val_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
     test_dataloader = DataLoader(test_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
-
 
     device = torch.device('cuda:1')
     model = timm.create_model("vit_small_patch16_224", pretrained=True)
@@ -102,6 +104,8 @@ if __name__ == "__main__":
         
         writer.add_scalar("Loss/Train", train_batch_loss/len(train_dataloader), epoch)
         writer.add_scalar("Loss/Val", val_batch_loss/len(val_dataloader), epoch)
-        writer.add_scalar("Performance/Val", auc(torch.cat(val_y_list), torch.cat(val_pred_list)), epoch)
+        writer.add_scalar("Performance/Val", auc_metric(torch.cat(val_pred_list), torch.cat(val_y_list)), epoch)
 
-        print(f"Epoch: {epoch}, Train Loss: {train_batch_loss/len(train_dataloader)}, Val Loss: {val_batch_loss/len(val_dataloader)}, Val Performance: {auc(torch.cat(val_y_list), torch.cat(val_pred_list))}")
+        print(f"Epoch: {epoch}, Train Loss: {train_batch_loss/len(train_dataloader)}, \
+              Val Loss: {val_batch_loss/len(val_dataloader)}, \
+              Val Performance: {auc_metric(torch.cat(val_pred_list), torch.cat(val_y_list))}")
