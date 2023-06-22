@@ -34,16 +34,13 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                  factor=0.2,
                  patience=2,
                  min_lr=1e-6,
-                 # TODO delete this
-                 val_loss_mode='min',
                  early_stopping_epochs=None,
-                 # TODO rename this to eps_factor
+                 # TODO rename this to eps_factor or eps_decay
                  eps_decay_rate=0.2,
+                 # TODO delete this, it's redundant with ep_steps
                  eps_decay=True,
                  eps_steps=1,
                  feature_costs=None,
-                 # TODO rename this variable
-                 lamda=None,
                  use_entropy=True):
         super().__init__()
 
@@ -63,7 +60,6 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
 
         # Save feature hyperparameters.
         self.max_features = max_features
-        self.lamda = lamda
         self.mask_size = self.mask_layer.mask_size
         if feature_costs is None:
             feature_costs = torch.ones(self.mask_size)
@@ -103,11 +99,11 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
 
         # Predictor loss with no features.
         x_masked = self.mask_layer(x, mask)
-        pred_without_next_feature = self.predictor(x_masked).detach()
+        pred_without_next_feature = self.predictor(x_masked)
         loss_without_next_feature = self.loss_fn(pred_without_next_feature, y)
+        self.manual_backward(loss_without_next_feature.mean() / (self.max_features + 1))
+        pred_without_next_feature = pred_without_next_feature.detach()
         loss_without_next_feature = loss_without_next_feature.detach()
-        # TODO should we calculate gradients here?
-        # Not training with no features seems like a mistake.
 
         for _ in range(self.max_features):
             # Estimate CMI using value network.
@@ -122,10 +118,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                 pred_cmi = self.value_network(x_masked)
 
             # Select next feature.
-            if self.lamda is None:
-                best = torch.argmax(pred_cmi / self.feature_costs, dim=1)
-            else:
-                best = torch.argmax(pred_cmi - self.lamda * self.feature_costs, dim=1)
+            best = torch.argmax(pred_cmi / self.feature_costs, dim=1)
             random = torch.tensor(np.random.choice(self.mask_size, size=len(x)), device=x.device)
             exploit = (torch.rand(len(x), device=x.device) > self.eps).int()
             actions = exploit * best + (1 - exploit) * random
@@ -146,7 +139,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
 
             # Calculate gradients.
             total_loss = torch.mean(value_network_loss) + torch.mean(loss_with_next_feature)
-            self.manual_backward(total_loss / self.max_features)
+            self.manual_backward(total_loss / (self.max_features + 1))
 
             # Update total loss.
             value_network_loss_total += torch.mean(value_network_loss)
@@ -190,10 +183,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
 
             # Select next feature, ensure no repeats.
             pred_cmi -= 1e6 * mask
-            if self.lamda is None:
-                best_feature_index = torch.argmax(pred_cmi / self.feature_costs, dim=1)
-            else:
-                best_feature_index = torch.argmax(pred_cmi - self.lamda * self.feature_costs, dim=1)
+            best_feature_index = torch.argmax(pred_cmi / self.feature_costs, dim=1)
             mask = torch.max(mask, ind_to_onehot(best_feature_index, self.mask_size))
 
             # Make prediction.
@@ -262,6 +252,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                  evaluation_mode='lamda-penalty',
                  # TODO remove this later
                  use_entropy=True,
+                 # TODO instead of kwargs, maybe we should indicate the expected arguments for each evaluation mode?
                  **kwargs):
         '''
         Evaluate the value network given a specified stopping criterion.
@@ -334,11 +325,14 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                         confidences = get_confidence(pred)
                         accept_sample = confidences < min_confidence
 
+                    # Ensure positive CMI.
+                    accept_sample = torch.bitwise_and(accept_sample, pred_cmi.max(dim=1).values > 0)
+
                     # Stop if no samples were accepted.
                     if sum(accept_sample).item() == 0:
                         break
 
-                    # Update mask based on which samples are accepted.
+                    # Update mask for accepted samples.
                     mask[accept_sample] = torch.max(mask[accept_sample], selection[accept_sample])
 
                 # Save final predictions and masks.
