@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from torch.distributions import RelaxedOneHotCategorical
-import statistics
-from scipy.stats import norm
+from torch.distributions import RelaxedOneHotCategorical, Categorical
 
 
 def restore_parameters(model, best_model):
@@ -15,7 +13,7 @@ def restore_parameters(model, best_model):
 class MaskLayer(nn.Module):
     '''
     Mask layer for tabular data.
-    
+
     Args:
       append:
       mask_size:
@@ -26,7 +24,7 @@ class MaskLayer(nn.Module):
         self.mask_size = mask_size
 
     def forward(self, x, m):
-        out = x * m 
+        out = x * m
         if self.append:
             out = torch.cat([out, m], dim=1)
         return out
@@ -35,14 +33,14 @@ class MaskLayer(nn.Module):
 class StaticMaskLayer1d(torch.nn.Module):
     '''
     Mask a fixed set of indices from 1d tabular data.
-    
+
     Args:
       inds: array or tensor of indices to select.
     '''
     def __init__(self, inds):
         super().__init__()
         self.inds = inds
-        
+
     def forward(self, x):
         return x[:, self.inds]
 
@@ -50,7 +48,7 @@ class StaticMaskLayer1d(torch.nn.Module):
 class StaticMaskLayer2d(torch.nn.Module):
     '''
     Mask a fixed set of pixels from 2d image data.
-    
+
     Args:
       mask: mask indicating which parts of the image to remove at a patch level.
       patch_size: size of patches in the mask.
@@ -90,22 +88,20 @@ class StaticMaskLayer2d(torch.nn.Module):
 
 
 def generate_uniform_mask(batch_size, num_features):
+    '''Generate mask with cardinality chosen uniformly at random.'''
     unif = torch.rand(batch_size, num_features)
     ref = torch.rand(batch_size, 1)
     return (unif > ref).float()
 
 
 def get_entropy(pred):
-    pred = pred.softmax(dim=1).cpu().data.numpy()
-    log_pred = np.array(list(map(lambda x: np.log(x), pred)))
-
-    entropies = np.sum(pred * log_pred, axis=1)
-    return -entropies
+    '''Calculate entropy, assuming logit predictions.'''
+    return Categorical(logits=pred).entropy()
 
 
 def get_confidence(pred):
-    pred = pred.softmax(dim=1)
-    return torch.max(pred, dim=1).values
+    '''Calculate prediction confidence level, assuming logit predictions.'''
+    return torch.max(pred.softmax(dim=1), dim=1).values
 
 
 def normalize(data, a, b):
@@ -123,7 +119,6 @@ def selection_with_lamda(cmi, feature_costs=None, lamda=None):
 def selection_without_lamda(cmi, feature_costs=None, lamda=None):
     if feature_costs is not None:
         return torch.argmax(cmi/feature_costs, dim=1)
-    
     return torch.argmax(cmi, dim=1)
 
 
@@ -158,7 +153,7 @@ class ConcreteSelector(nn.Module):
 
 
 def ind_to_onehot(inds, n):
-    # Convert index to one-hot encoding.
+    '''Convert index to one-hot encoding.'''
     onehot = torch.zeros(len(inds), n, dtype=torch.float32, device=inds.device)
     onehot[torch.arange(len(inds)), inds] = 1
     return onehot

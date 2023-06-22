@@ -101,8 +101,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             # Estimate CMI using value network.
             x_masked = self.mask_layer(x, mask)
             if self.use_entropy:
-                # TODO why is torch.tensor needed here?
-                entropy = torch.tensor(get_entropy(pred_without_next_feature.detach()), device=x.device).unsqueeze(1)
+                entropy = get_entropy(pred_without_next_feature.detach()).unsqueeze(1)
                 # TODO why is sigmoid appended to the network? Activations should be applied here.
                 # TODO use_entropy should be an argument with multiple options (none, entropy scaling, softplus).
                 pred_cmi = self.value_network(x_masked) * entropy
@@ -168,7 +167,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             x_masked = self.mask_layer(x, mask)
             if self.use_entropy:
                 # TODO again, sigmoid and softplus should be applied here, not in the network.
-                entropy = torch.tensor(get_entropy(pred), device=x.device).unsqueeze(1)
+                entropy = get_entropy(pred).unsqueeze(1)
                 pred_cmi = self.value_network(x_masked) * entropy
             else:
                 self.value_network(x_masked)
@@ -288,7 +287,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                     pred = self.predictor(x_masked)
                     if self.use_entropy:
                         # TODO fix this after sigmoid is removed from network
-                        entropy = torch.tensor(get_entropy(pred.detach()), device=x.device).unsqueeze(1)
+                        entropy = get_entropy(pred.detach()).unsqueeze(1)
                         pred_cmi = self.value_network(x_masked) * entropy
                     else:
                         pred_cmi = self.value_network(x_masked)
