@@ -3,16 +3,8 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import pytorch_lightning as pl
-from dime.utils import get_entropy, get_confidence, selection_without_lamda
+from dime.utils import get_entropy, get_confidence, selection_without_lamda, ind_to_onehot
 from tqdm import tqdm
-
-
-# TODO this belongs in utils
-def ind_to_onehot(inds, n):
-    # Convert index to one-hot encoding.
-    onehot = torch.zeros(len(inds), n, dtype=torch.float32, device=inds.device)
-    onehot[torch.arange(len(inds)), inds] = 1
-    return onehot
 
 
 class GreedyCMIEstimatorPL(pl.LightningModule):

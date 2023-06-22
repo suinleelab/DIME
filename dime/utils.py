@@ -131,26 +131,6 @@ def selection_without_cost(cmi, feature_costs=None, lamda=None):
     return torch.argmax(cmi, dim=1)
 
 
-def generate_gaussion_cost(dim):
-    x = np.arange(0, 784)
-    mean = statistics.mean(x)
-    sd = statistics.stdev(x)
-    return normalize(norm.pdf(x, mean, sd), 0, 1)
-
-
-def generate_2d_gaussion_cost(size=28, fwhm=20, center=None):
-    x = np.arange(0, size, 1, float)
-    y = x[:, np.newaxis]
-
-    if center is None:
-        x0 = y0 = size // 2
-    else:
-        x0 = center[0]
-        y0 = center[1]
-
-    return normalize((np.exp(-4*np.log(2) * ((x-x0)**2 + (y-y0)**2) / fwhm**2)).flatten(), 0, 1)
-
-
 def generate_pixel_based_cost(dataset):
     cost = np.array([])
     for data in dataset:
@@ -175,6 +155,13 @@ class ConcreteSelector(nn.Module):
         else:
             dist = RelaxedOneHotCategorical(temp, logits=logits / self.gamma)
             return dist.rsample()
+
+
+def ind_to_onehot(inds, n):
+    # Convert index to one-hot encoding.
+    onehot = torch.zeros(len(inds), n, dtype=torch.float32, device=inds.device)
+    onehot[torch.arange(len(inds)), inds] = 1
+    return onehot
 
 
 def make_onehot(x):
