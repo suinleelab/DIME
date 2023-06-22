@@ -78,12 +78,10 @@ if __name__ == '__main__':
         drop_last=True, num_workers=4)
         
     val_dataloader = DataLoader(
-        val_dataset, batch_size=128, shuffle=False, pin_memory=True,
-        drop_last=True, num_workers=4)
+        val_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
         
     test_dataloader = DataLoader(
-        test_dataset, batch_size=128, shuffle=False, pin_memory=True,
-        drop_last=True, num_workers=4)
+        test_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
 
     mask_layer = MaskLayerGrouped(append=True, group_matrix=torch.tensor(feature_groups_mask))
     num_features = [1, 3, 5, 10, 15, 20, 25]
