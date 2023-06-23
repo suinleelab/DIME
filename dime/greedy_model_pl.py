@@ -53,11 +53,8 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         # Save feature hyperparameters.
         self.max_features = max_features
         self.mask_size = self.mask_layer.mask_size
-        if feature_costs is None:
-            feature_costs = torch.ones(self.mask_size)
-        elif isinstance(feature_costs, np.ndarray):
-            feature_costs = torch.tensor(feature_costs)
-        self.register_buffer('feature_costs', feature_costs)
+        self.set_feature_costs(feature_costs)
+        self.mode = None
 
         # Save loss functions.
         self.loss_fn = loss_fn
@@ -73,8 +70,29 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         self.automatic_optimization = False
         # self.save_hyperparameters()
 
+    def set_feature_costs(self, feature_costs=None):
+        '''Set feature cost values. Defaults to uniform cost.'''
+        if feature_costs is None:
+            feature_costs = torch.ones(self.mask_size)
+        elif isinstance(feature_costs, np.ndarray):
+            feature_costs = torch.tensor(feature_costs)
+        self.register_buffer('feature_costs', feature_costs)
+
+    def set_stopping_criterion(self, budget=None, lamda=None, confidence=None):
+        '''Set parameters for stopping criterion.'''
+        if sum([budget is None, lamda is None, confidence is None]) != 2:
+            raise ValueError('Must specify exactly one of budget, lamda, and confidence.')
+        if budget is not None:
+            self.budget = budget
+            self.mode = 'budget'
+        elif lamda is not None:
+            self.lamda = lamda
+            self.mode = 'penalized'
+        elif confidence is not None:
+            self.confidence = confidence
+            self.mode = confidence
+
     def on_fit_start(self):
-        # TODO revisit this later, might not need these.
         self.num_epsilon_steps = 0
         self.num_bad_epochs = 0
 
@@ -152,9 +170,12 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         self.log('Value Network Loss Train', value_network_loss, prog_bar=True, logger=False)
 
         # Log in tensorboard.
+        # TODO is this redundant, could we just set logger=True in the log function? Maybe not,
+        # because we want to pass the current epoch. But perhaps that would be captured automatically
         self.logger.experiment.add_scalar('Predictor Loss/Train', pred_loss, self.current_epoch)
         self.logger.experiment.add_scalar('Value Network Loss/Train', value_network_loss, self.current_epoch)
 
+    # TODO this is based on final rather than average loss, which is not what we want.
     def validation_step(self, batch, batch_idx):
         # Setup.
         x, y = batch
@@ -186,8 +207,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         pred_list, y_list = zip(*outputs)
         pred_loss = self.loss_fn(torch.cat(pred_list), torch.cat(y_list)).mean()
-        # TODO remove need for numpy
-        val_loss = self.val_loss_fn(torch.cat(pred_list), torch.cat(y_list).cpu().data.numpy())
+        val_loss = self.val_loss_fn(torch.cat(pred_list), torch.cat(y_list))
 
         # Log in progress bar.
         self.log('Predictor Loss Val', pred_loss, prog_bar=True, logger=False)
@@ -233,7 +253,152 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             'lr_scheduler': scheduler
         }
 
-    # TODO maybe we can rely on a built-in Lightning function for this?
+    def on_predict_epoch_start(self):
+        if self.mode not in ['budget', 'penalized', 'confidence']:
+            raise ValueError('Must specify stopping criterion parameters')
+
+    def predict_step(self, batch, batch_idx):
+        # Setup.
+        # TODO need to support the case where y is not provided
+        x, y = batch
+        mask = torch.zeros(len(x), self.mask_size, dtype=x.dtype, device=x.device)
+        x_masked = self.mask_layer(x, mask)
+        pred = self.predictor(x_masked)
+
+        for step in range(self.mask_size):
+            # Estimate CMI using value network.
+            x_masked = self.mask_layer(x, mask)
+            if self.use_entropy:
+                # TODO again, sigmoid and softplus should be applied here, not in the network.
+                entropy = get_entropy(pred).unsqueeze(1)
+                pred_cmi = self.value_network(x_masked) * entropy
+            else:
+                self.value_network(x_masked)
+
+            # Determine best feature.
+            pred_cmi -= 1e6 * mask
+            best_feature_index = torch.argmax(pred_cmi / self.feature_costs, dim=1)
+            selection = ind_to_onehot(best_feature_index, self.mask_size)
+
+            # Stopping criteria.
+            if self.mode == 'penalized':
+                # Check for sufficiently large CMI.
+                accept_sample = torch.max(pred_cmi / self.feature_costs, dim=1).values > self.lamda
+
+            elif self.mode == 'budget':
+                # Check for remaining budget.
+                features_selected = torch.max(mask, selection)
+                accept_sample = torch.sum(features_selected * self.feature_costs, dim=1) <= self.budget
+
+            elif self.mode == 'confidence':
+                # Check for sufficient confidence.
+                confidences = get_confidence(pred)
+                accept_sample = confidences < self.confidence
+
+            # Ensure positive CMI.
+            accept_sample = torch.bitwise_and(accept_sample, pred_cmi.max(dim=1).values > 0)
+
+            # Stop if no samples were accepted.
+            if sum(accept_sample).item() == 0:
+                break
+
+            # Update mask for accepted samples.
+            mask[accept_sample] = torch.max(mask[accept_sample], selection[accept_sample])
+
+        # Get final predictions and masks.
+        x_masked = self.mask_layer(x, mask)
+        pred = self.predictor(x_masked)
+        return mask.cpu(), pred.cpu(), y.cpu()
+
+    def on_predict_epoch_end(self, outputs):
+        # Assemble outputs.
+        mask_list, pred_list, y_list = zip(*outputs[0])
+        return {
+            'mask': torch.cat(mask_list),
+            'pred': torch.cat(pred_list),
+            'y': torch.cat(y_list)
+        }
+        # TODO this value doesn't even get returned...wtf
+
+    def on_test_epoch_start(self):
+        if self.mode not in ['budget', 'penalized', 'confidence']:
+            raise ValueError('Must specify stopping criterion parameters')
+
+    def test_step(self, batch, batch_idx):
+        # Setup.
+        x, y = batch
+        mask = torch.zeros(len(x), self.mask_size, dtype=x.dtype, device=x.device)
+        x_masked = self.mask_layer(x, mask)
+        pred = self.predictor(x_masked)
+
+        for _ in range(self.mask_size):
+            # Estimate CMI using value network.
+            x_masked = self.mask_layer(x, mask)
+            if self.use_entropy:
+                # TODO again, sigmoid and softplus should be applied here, not in the network.
+                entropy = get_entropy(pred).unsqueeze(1)
+                pred_cmi = self.value_network(x_masked) * entropy
+            else:
+                self.value_network(x_masked)
+
+            # Determine best feature.
+            pred_cmi -= 1e6 * mask
+            best_feature_index = torch.argmax(pred_cmi / self.feature_costs, dim=1)
+            selection = ind_to_onehot(best_feature_index, self.mask_size)
+
+            # Stopping criteria.
+            if self.mode == 'penalized':
+                # Check for sufficiently large CMI.
+                accept_sample = torch.max(pred_cmi / self.feature_costs, dim=1).values > self.lamda
+
+            elif self.mode == 'budget':
+                # Check for remaining budget.
+                features_selected = torch.max(mask, selection)
+                accept_sample = torch.sum(features_selected * self.feature_costs, dim=1) <= self.budget
+
+            elif self.mode == 'confidence':
+                # Check for sufficient confidence.
+                confidences = get_confidence(pred)
+                accept_sample = confidences < self.confidence
+
+            # Ensure positive CMI.
+            accept_sample = torch.bitwise_and(accept_sample, pred_cmi.max(dim=1).values > 0)
+
+            # Stop if no samples were accepted.
+            if sum(accept_sample).item() == 0:
+                break
+
+            # Update mask for accepted samples.
+            mask[accept_sample] = torch.max(mask[accept_sample], selection[accept_sample])
+
+        # Get final predictions and masks.
+        x_masked = self.mask_layer(x, mask)
+        pred = self.predictor(x_masked)
+        return mask.cpu(), pred, y
+
+    def test_epoch_end(self, outputs):
+        # Assemble outputs.
+        mask_list, pred_list, y_list = zip(*outputs)
+        mask = torch.cat(mask_list)
+        pred = torch.cat(pred_list)
+        y = torch.cat(y_list)
+
+        # Calculate performance.
+        loss = self.loss_fn(pred, y).mean()
+        performance = self.val_loss_fn(pred, y)
+
+        # Log to progress bar.
+        # self.log('Loss', loss, prog_bar=True, logger=False)
+        # self.log('Performance', performance, prog_bar=True, logger=False)
+
+        return {
+            'mask': mask,
+            'pred': pred.cpu(),
+            'y': y.cpu(),
+            'loss': loss.item(),
+            'performance': performance.item()
+        }
+
     def evaluate(self,
                  test_dataloader,
                  performance_func,
