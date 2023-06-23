@@ -3,8 +3,9 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import pytorch_lightning as pl
-from dime.utils import get_entropy, get_confidence, selection_without_lamda, ind_to_onehot
-from tqdm import tqdm
+from dime.utils import get_entropy, get_confidence, ind_to_onehot
+# from dime.utils import get_entropy, get_confidence, selection_without_lamda, ind_to_onehot
+# from tqdm import tqdm
 
 
 class GreedyCMIEstimatorPL(pl.LightningModule):
@@ -253,211 +254,294 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             'lr_scheduler': scheduler
         }
 
-    def inference(self, data_loader, feature_costs=None, budget=None, lamda=None, confidence=None):
-        '''
-        Perform inference on a dataset using the trained model.
-
-        TODO list args
-        '''
+    def predict_step(self, batch, batch_idx):
         # Setup.
-        self.eval()
-        device = next(self.parameters()).device
-
-        # Set feature costs.
-        if feature_costs is None:
-            feature_costs = self.feature_costs
+        if len(batch) == 2:
+            x, y = batch
         else:
-            if isinstance(feature_costs, np.ndarray):
-                feature_costs = torch.tensor(feature_costs)
-            feature_costs = feature_costs.to(device)
+            x = batch
+        mask = torch.zeros(len(x), self.mask_size, dtype=x.dtype, device=x.device)
+        accept_sample = torch.ones(len(x), dtype=bool, device=x.device)
 
-        # Determine stopping criterion.
-        if not sum([budget is not None, lamda is not None, confidence is not None]) == 1:
-            raise ValueError('Must specify exactly one stopping criterion.')
-        if budget is not None:
-            mode = 'budget'
-        elif lamda is not None:
-            mode = 'penalized'
-        elif confidence is not None:
-            mode = 'confidence'
+        for step in range(self.mask_size):
+            # Estimate CMI using value network.
+            x_masked = self.mask_layer(x, mask)
+            pred = self.predictor(x_masked)
+            if self.use_entropy:
+                # TODO fix this after sigmoid is removed from network
+                entropy = get_entropy(pred.detach()).unsqueeze(1)
+                pred_cmi = self.value_network(x_masked) * entropy
+            else:
+                pred_cmi = self.value_network(x_masked)
 
-        # For saving final results.
-        mask_list = []
-        pred_list = []
-        y_list = []
+            # Determine best feature.
+            pred_cmi -= 1e6 * mask
+            best_feature_index = torch.argmax(pred_cmi / self.feature_costs, dim=1)
+            selection = ind_to_onehot(best_feature_index, self.mask_size)
 
-        with torch.no_grad():
-            for _, batch in enumerate(tqdm(data_loader)):
-                x, y = batch
-                x = x.to(device)
-                y = y.to(device)
+            # Stopping criteria.
+            if self.mode == 'penalized':
+                # Check for sufficiently large CMI.
+                accept_sample = torch.max(pred_cmi / self.feature_costs, dim=1).values > self.lamda
 
-                # Setup.
-                mask = torch.zeros(len(x), self.mask_size, dtype=x.dtype, device=device)
-                accept_sample = torch.ones(len(x), dtype=bool, device=device)
+            elif self.mode == 'budget':
+                # Check for remaining budget.
+                features_selected = torch.max(mask, selection)
+                accept_sample = torch.sum(features_selected * self.feature_costs, dim=1) <= self.budget
 
-                for step in range(self.mask_size):
-                    # Estimate CMI using value network.
-                    x_masked = self.mask_layer(x, mask)
-                    pred = self.predictor(x_masked)
-                    if self.use_entropy:
-                        # TODO fix this after sigmoid is removed from network
-                        entropy = get_entropy(pred.detach()).unsqueeze(1)
-                        pred_cmi = self.value_network(x_masked) * entropy
-                    else:
-                        pred_cmi = self.value_network(x_masked)
+            elif self.mode == 'confidence':
+                # Check for sufficient confidence.
+                confidences = get_confidence(pred)
+                accept_sample = confidences < self.confidence
 
-                    # Determine best feature.
-                    pred_cmi -= 1e6 * mask
-                    best_feature_index = torch.argmax(pred_cmi / feature_costs, dim=1)
-                    selection = ind_to_onehot(best_feature_index, self.mask_size)
+            # Ensure positive CMI.
+            accept_sample = torch.bitwise_and(accept_sample, pred_cmi.max(dim=1).values > 0)
 
-                    # Stopping criteria.
-                    # TODO change names for each option
-                    if mode == 'lamda-penalty':
-                        # Check for sufficiently large CMI.
-                        accept_sample = torch.max(pred_cmi / feature_costs, dim=1).values > lamda
+            # Stop if no samples were accepted.
+            if sum(accept_sample).item() == 0:
+                break
 
-                    elif mode == 'fixed-budget':
-                        # Check for remaining budget.
-                        features_selected = torch.max(mask, selection)
-                        accept_sample = torch.sum(features_selected * feature_costs, dim=1) <= budget
+            # Update mask for accepted samples.
+            mask[accept_sample] = torch.max(mask[accept_sample], selection[accept_sample])
 
-                    elif mode == 'confidence':
-                        # Check for sufficient confidence.
-                        confidences = get_confidence(pred)
-                        accept_sample = confidences < confidence
-
-                    # Ensure positive CMI.
-                    accept_sample = torch.bitwise_and(accept_sample, pred_cmi.max(dim=1).values > 0)
-
-                    # Stop if no samples were accepted.
-                    if sum(accept_sample).item() == 0:
-                        break
-
-                    # Update mask for accepted samples.
-                    mask[accept_sample] = torch.max(mask[accept_sample], selection[accept_sample])
-
-                # Save final predictions and masks.
-                x_masked = self.mask_layer(x, mask)
-                pred = self.predictor(x_masked)
-                mask_list.append(mask.cpu())
-                pred_list.append(pred.cpu())
-                y_list.append(y.cpu())
-
-        # Assemble results.
-        return {
-            'mask': torch.cat(mask_list),
-            'pred': torch.cat(pred_list),
-            'y': torch.cat(y_list)
-        }
-
-    def evaluate(self,
-                 test_dataloader,
-                 performance_func,
-                 feature_costs=None,
-                 # TODO maybe this can be a string or boolean? There can't be that many options.
-                 selection_func=selection_without_lamda,
-                 evaluation_mode='lamda-penalty',
-                 # TODO remove this later
-                 use_entropy=True,
-                 # TODO instead of kwargs, maybe we should indicate the expected arguments for each evaluation mode?
-                 **kwargs):
-        '''
-        Evaluate the value network given a specified stopping criterion.
-
-        # TODO list args.
-        '''
-        # Setup.
-        device = next(self.predictor.parameters()).device
-        # TODO maybe we should just return predictions instead of loss?
-        # loss = nn.CrossEntropyLoss(reduction='none')
-        if feature_costs is None:
-            feature_costs = self.feature_costs
+        # Save final predictions and masks.
+        x_masked = self.mask_layer(x, mask)
+        pred = self.predictor(x_masked)
+        if len(batch) == 2:
+            return mask.cpu(), pred.cpu(), y.cpu()
         else:
-            if isinstance(feature_costs, np.ndarray):
-                feature_costs = torch.tensor(feature_costs)
-            feature_costs = feature_costs.to(self.device)
+            return mask.cpu(), pred.cpu()
 
-        # TODO this is boilerplate.
-        self.value_network.eval()
-        self.predictor.eval()
+    # Note: Lightning doesn't support using this function to post-process predictions.
+    # def on_predict_epoch_end(self, outputs):
+    #     pass
 
-        # For saving results.
-        final_masks = []
-        pred_list = []
-        y_list = []
+    def format_predictions(self, outputs):
+        '''Format predictions output by trainer.predict().'''
+        if len(outputs[0]) == 3:
+            mask_list, pred_list, y_list = zip(*outputs)
+            mask = torch.cat(mask_list)
+            pred = torch.cat(pred_list)
+            y = torch.cat(y_list)
+            return {
+                'mask': mask,
+                'pred': pred,
+                'y': y
+            }
+        else:
+            mask_list, pred_list = zip(*outputs)
+            mask = torch.cat(mask_list)
+            pred = torch.cat(pred_list)
+            return {
+                'mask': mask,
+                'pred': pred
+            }
 
-        # TODO this is boilerplate.
-        with torch.no_grad():
-            for _, batch in enumerate(tqdm(test_dataloader)):
-                x, y = batch
-                x = x.to(device)
-                y = y.to(device)
+    # def inference(self, data_loader, feature_costs=None, budget=None, lamda=None, confidence=None):
+    #     '''
+    #     Perform inference on a dataset using the trained model.
 
-                # Setup.
-                mask = torch.zeros(len(x), self.mask_size, dtype=x.dtype, device=device)
-                accept_sample = torch.ones(len(x), dtype=bool, device=device)
+    #     TODO list args
+    #     '''
+    #     # Setup.
+    #     self.eval()
+    #     device = next(self.parameters()).device
 
-                for step in range(self.mask_size):
-                    # Estimate CMI using value network.
-                    x_masked = self.mask_layer(x, mask)
-                    pred = self.predictor(x_masked)
-                    if self.use_entropy:
-                        # TODO fix this after sigmoid is removed from network
-                        entropy = get_entropy(pred.detach()).unsqueeze(1)
-                        pred_cmi = self.value_network(x_masked) * entropy
-                    else:
-                        pred_cmi = self.value_network(x_masked)
+    #     # Set feature costs.
+    #     if feature_costs is None:
+    #         feature_costs = self.feature_costs
+    #     else:
+    #         if isinstance(feature_costs, np.ndarray):
+    #             feature_costs = torch.tensor(feature_costs)
+    #         feature_costs = feature_costs.to(device)
 
-                    # Determine best feature.
-                    pred_cmi -= 1e6 * mask
-                    best_feature_index = torch.argmax(pred_cmi / feature_costs, dim=1)
-                    selection = ind_to_onehot(best_feature_index, self.mask_size)
+    #     # Determine stopping criterion.
+    #     if not sum([budget is not None, lamda is not None, confidence is not None]) == 1:
+    #         raise ValueError('Must specify exactly one stopping criterion.')
+    #     if budget is not None:
+    #         mode = 'budget'
+    #     elif lamda is not None:
+    #         mode = 'penalized'
+    #     elif confidence is not None:
+    #         mode = 'confidence'
 
-                    # Stopping criteria.
-                    # TODO change names for each option
-                    if evaluation_mode == 'lamda-penalty':
-                        # Check for sufficiently large CMI.
-                        lamda = kwargs['lamda']
-                        accept_sample = torch.max(pred_cmi / feature_costs, dim=1).values > lamda
+    #     # For saving final results.
+    #     mask_list = []
+    #     pred_list = []
+    #     y_list = []
 
-                    elif evaluation_mode == 'fixed-budget':
-                        # Check for remaining budget.
-                        budget = kwargs['budget']
-                        features_selected = torch.max(mask, selection)
-                        accept_sample = torch.sum(features_selected * feature_costs, dim=1) <= budget
+    #     with torch.no_grad():
+    #         for _, batch in enumerate(tqdm(data_loader)):
+    #             x, y = batch
+    #             x = x.to(device)
+    #             y = y.to(device)
 
-                    elif evaluation_mode == 'confidence':
-                        # Check for sufficient confidence.
-                        min_confidence = kwargs['min_confidence']
-                        confidences = get_confidence(pred)
-                        accept_sample = confidences < min_confidence
+    #             # Setup.
+    #             mask = torch.zeros(len(x), self.mask_size, dtype=x.dtype, device=device)
+    #             accept_sample = torch.ones(len(x), dtype=bool, device=device)
 
-                    # Ensure positive CMI.
-                    accept_sample = torch.bitwise_and(accept_sample, pred_cmi.max(dim=1).values > 0)
+    #             for step in range(self.mask_size):
+    #                 # Estimate CMI using value network.
+    #                 x_masked = self.mask_layer(x, mask)
+    #                 pred = self.predictor(x_masked)
+    #                 if self.use_entropy:
+    #                     # TODO fix this after sigmoid is removed from network
+    #                     entropy = get_entropy(pred.detach()).unsqueeze(1)
+    #                     pred_cmi = self.value_network(x_masked) * entropy
+    #                 else:
+    #                     pred_cmi = self.value_network(x_masked)
 
-                    # Stop if no samples were accepted.
-                    if sum(accept_sample).item() == 0:
-                        break
+    #                 # Determine best feature.
+    #                 pred_cmi -= 1e6 * mask
+    #                 best_feature_index = torch.argmax(pred_cmi / feature_costs, dim=1)
+    #                 selection = ind_to_onehot(best_feature_index, self.mask_size)
 
-                    # Update mask for accepted samples.
-                    mask[accept_sample] = torch.max(mask[accept_sample], selection[accept_sample])
+    #                 # Stopping criteria.
+    #                 # TODO change names for each option
+    #                 if mode == 'lamda-penalty':
+    #                     # Check for sufficiently large CMI.
+    #                     accept_sample = torch.max(pred_cmi / feature_costs, dim=1).values > lamda
 
-                # Save final predictions and masks.
-                x_masked = self.mask_layer(x, mask)
-                pred = self.predictor(x_masked)
-                final_masks.append(mask.cpu())
-                pred_list.append(pred.cpu())
-                y_list.append(y.cpu())
+    #                 elif mode == 'fixed-budget':
+    #                     # Check for remaining budget.
+    #                     features_selected = torch.max(mask, selection)
+    #                     accept_sample = torch.sum(features_selected * feature_costs, dim=1) <= budget
 
-        # TODO should rename these
-        # TODO should maybe not return performance, just predictions and masks
-        # Return multiple metrics for downstream analysis
-        return_dict = dict(
-            final_masks=torch.cat(final_masks).numpy(),
-            pred_list=torch.cat(pred_list),
-            y_list=torch.cat(y_list),
-            performance=performance_func(torch.cat(pred_list), torch.cat(y_list)),
-        )
-        return return_dict
+    #                 elif mode == 'confidence':
+    #                     # Check for sufficient confidence.
+    #                     confidences = get_confidence(pred)
+    #                     accept_sample = confidences < confidence
+
+    #                 # Ensure positive CMI.
+    #                 accept_sample = torch.bitwise_and(accept_sample, pred_cmi.max(dim=1).values > 0)
+
+    #                 # Stop if no samples were accepted.
+    #                 if sum(accept_sample).item() == 0:
+    #                     break
+
+    #                 # Update mask for accepted samples.
+    #                 mask[accept_sample] = torch.max(mask[accept_sample], selection[accept_sample])
+
+    #             # Save final predictions and masks.
+    #             x_masked = self.mask_layer(x, mask)
+    #             pred = self.predictor(x_masked)
+    #             mask_list.append(mask.cpu())
+    #             pred_list.append(pred.cpu())
+    #             y_list.append(y.cpu())
+
+    #     # Assemble results.
+    #     return {
+    #         'mask': torch.cat(mask_list),
+    #         'pred': torch.cat(pred_list),
+    #         'y': torch.cat(y_list)
+    #     }
+
+    # def evaluate(self,
+    #              test_dataloader,
+    #              performance_func,
+    #              feature_costs=None,
+    #              # TODO maybe this can be a string or boolean? There can't be that many options.
+    #              selection_func=selection_without_lamda,
+    #              evaluation_mode='lamda-penalty',
+    #              # TODO remove this later
+    #              use_entropy=True,
+    #              # TODO instead of kwargs, maybe we should indicate the expected arguments for each evaluation mode?
+    #              **kwargs):
+    #     '''
+    #     Evaluate the value network given a specified stopping criterion.
+
+    #     # TODO list args.
+    #     '''
+    #     # Setup.
+    #     device = next(self.predictor.parameters()).device
+    #     # TODO maybe we should just return predictions instead of loss?
+    #     # loss = nn.CrossEntropyLoss(reduction='none')
+    #     if feature_costs is None:
+    #         feature_costs = self.feature_costs
+    #     else:
+    #         if isinstance(feature_costs, np.ndarray):
+    #             feature_costs = torch.tensor(feature_costs)
+    #         feature_costs = feature_costs.to(self.device)
+
+    #     # TODO this is boilerplate.
+    #     self.value_network.eval()
+    #     self.predictor.eval()
+
+    #     # For saving results.
+    #     final_masks = []
+    #     pred_list = []
+    #     y_list = []
+
+    #     # TODO this is boilerplate.
+    #     with torch.no_grad():
+    #         for _, batch in enumerate(tqdm(test_dataloader)):
+    #             x, y = batch
+    #             x = x.to(device)
+    #             y = y.to(device)
+
+    #             # Setup.
+    #             mask = torch.zeros(len(x), self.mask_size, dtype=x.dtype, device=device)
+    #             accept_sample = torch.ones(len(x), dtype=bool, device=device)
+
+    #             for step in range(self.mask_size):
+    #                 # Estimate CMI using value network.
+    #                 x_masked = self.mask_layer(x, mask)
+    #                 pred = self.predictor(x_masked)
+    #                 if self.use_entropy:
+    #                     # TODO fix this after sigmoid is removed from network
+    #                     entropy = get_entropy(pred.detach()).unsqueeze(1)
+    #                     pred_cmi = self.value_network(x_masked) * entropy
+    #                 else:
+    #                     pred_cmi = self.value_network(x_masked)
+
+    #                 # Determine best feature.
+    #                 pred_cmi -= 1e6 * mask
+    #                 best_feature_index = torch.argmax(pred_cmi / feature_costs, dim=1)
+    #                 selection = ind_to_onehot(best_feature_index, self.mask_size)
+
+    #                 # Stopping criteria.
+    #                 # TODO change names for each option
+    #                 if evaluation_mode == 'lamda-penalty':
+    #                     # Check for sufficiently large CMI.
+    #                     lamda = kwargs['lamda']
+    #                     accept_sample = torch.max(pred_cmi / feature_costs, dim=1).values > lamda
+
+    #                 elif evaluation_mode == 'fixed-budget':
+    #                     # Check for remaining budget.
+    #                     budget = kwargs['budget']
+    #                     features_selected = torch.max(mask, selection)
+    #                     accept_sample = torch.sum(features_selected * feature_costs, dim=1) <= budget
+
+    #                 elif evaluation_mode == 'confidence':
+    #                     # Check for sufficient confidence.
+    #                     min_confidence = kwargs['min_confidence']
+    #                     confidences = get_confidence(pred)
+    #                     accept_sample = confidences < min_confidence
+
+    #                 # Ensure positive CMI.
+    #                 accept_sample = torch.bitwise_and(accept_sample, pred_cmi.max(dim=1).values > 0)
+
+    #                 # Stop if no samples were accepted.
+    #                 if sum(accept_sample).item() == 0:
+    #                     break
+
+    #                 # Update mask for accepted samples.
+    #                 mask[accept_sample] = torch.max(mask[accept_sample], selection[accept_sample])
+
+    #             # Save final predictions and masks.
+    #             x_masked = self.mask_layer(x, mask)
+    #             pred = self.predictor(x_masked)
+    #             final_masks.append(mask.cpu())
+    #             pred_list.append(pred.cpu())
+    #             y_list.append(y.cpu())
+
+    #     # TODO should rename these
+    #     # TODO should maybe not return performance, just predictions and masks
+    #     # Return multiple metrics for downstream analysis
+    #     return_dict = dict(
+    #         final_masks=torch.cat(final_masks).numpy(),
+    #         pred_list=torch.cat(pred_list),
+    #         y_list=torch.cat(y_list),
+    #         performance=performance_func(torch.cat(pred_list), torch.cat(y_list)),
+    #     )
+    #     return return_dict
