@@ -29,7 +29,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                  eps_decay=0.2,
                  eps_steps=1,
                  feature_costs=None,
-                 use_entropy=True):
+                 cmi_scaling='bounded'):
         super().__init__()
 
         # Save network modules.
@@ -59,7 +59,9 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         self.eps = eps
         self.eps_decay = eps_decay
         self.eps_steps = eps_steps
-        self.use_entropy = use_entropy
+        if cmi_scaling not in ('none', 'positive', 'bounded'):
+            raise ValueError('cmi_scaling must be one of "none", "positive", or "bounded"')
+        self.cmi_scaling = cmi_scaling
 
         # Lightning module setup.
         self.automatic_optimization = False
@@ -76,7 +78,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
     def set_stopping_criterion(self, budget=None, lam=None, confidence=None):
         '''Set parameters for stopping criterion.'''
         if sum([budget is None, lam is None, confidence is None]) != 2:
-            raise ValueError('Must specify exactly one of budget, lam, and confidence.')
+            raise ValueError('Must specify exactly one of budget, lam, and confidence')
         if budget is not None:
             self.budget = budget
             self.mode = 'budget'
@@ -115,12 +117,11 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         for _ in range(self.max_features):
             # Estimate CMI using value network.
             x_masked = self.mask_layer(x, mask)
-            # TODO remove unnecessary detach statement.
-            if self.use_entropy:
-                entropy = get_entropy(pred_without_next_feature.detach()).unsqueeze(1)
-                # TODO why is sigmoid appended to the network? Activations should be applied here.
-                # TODO use_entropy should be an argument with multiple options (none, entropy scaling, softplus).
-                pred_cmi = self.value_network(x_masked) * entropy
+            if self.cmi_scaling == 'bounded':
+                entropy = get_entropy(pred_without_next_feature).unsqueeze(1)
+                pred_cmi = self.value_network(x_masked).sigmoid() * entropy
+            elif self.cmi_scaling == 'positive':
+                pred_cmi = torch.nn.functional.softplus(self.value_network(x_masked))
             else:
                 pred_cmi = self.value_network(x_masked)
 
@@ -180,10 +181,11 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         for _ in range(self.max_features):
             # Estimate CMI using value network.
             x_masked = self.mask_layer(x, mask)
-            if self.use_entropy:
-                # TODO again, sigmoid and softplus should be applied here, not in the network.
+            if self.cmi_scaling == 'bounded':
                 entropy = get_entropy(pred).unsqueeze(1)
-                pred_cmi = self.value_network(x_masked) * entropy
+                pred_cmi = self.value_network(x_masked).sigmoid() * entropy
+            elif self.cmi_scaling == 'positive':
+                pred_cmi = torch.nn.functional.softplus(self.value_network(x_masked))
             else:
                 pred_cmi = self.value_network(x_masked)
 
@@ -262,7 +264,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
 
     def on_predict_start(self):
         if not hasattr(self, 'mode'):
-            print('Must specify stopping criterion. Recommended usage is via `inference` function.')
+            print('Must specify stopping criterion. Recommended usage is via `inference` function')
 
     def predict_step(self, batch, batch_idx):
         # Setup.
@@ -277,10 +279,11 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             # Estimate CMI using value network.
             x_masked = self.mask_layer(x, mask)
             pred = self.predictor(x_masked)
-            if self.use_entropy:
-                # TODO fix this after sigmoid is removed from network
-                entropy = get_entropy(pred.detach()).unsqueeze(1)
-                pred_cmi = self.value_network(x_masked) * entropy
+            if self.cmi_scaling == 'bounded':
+                entropy = get_entropy(pred).unsqueeze(1)
+                pred_cmi = self.value_network(x_masked).sigmoid() * entropy
+            elif self.cmi_scaling == 'positive':
+                pred_cmi = torch.nn.functional.softplus(self.value_network(x_masked))
             else:
                 pred_cmi = self.value_network(x_masked)
 
