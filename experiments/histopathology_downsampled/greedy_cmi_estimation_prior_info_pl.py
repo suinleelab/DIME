@@ -138,7 +138,7 @@ if __name__ == '__main__':
     logger = TensorBoardLogger("logs", name=f"{run_description}")
     checkpoint_callback = best_hard_callback = ModelCheckpoint(
                 save_top_k=1,
-                monitor='Performance_Val',
+                monitor='Perf Val/Mean',
                 mode='max',
                 filename='best_val_perfomance_model',
                 verbose=False
@@ -152,8 +152,8 @@ if __name__ == '__main__':
                                                          eps=0.05,
                                                          loss_fn=nn.CrossEntropyLoss(reduction='none'),
                                                          val_loss_fn=AUROC(task='multiclass', num_classes=2),
-                                                         eps_decay=True,
-                                                         eps_decay_rate=0.2,
+                                                         eps_decay=0.2,
+                                                         eps_steps=10,
                                                          patience=3,
                                                          feature_costs=None,
                                                          use_entropy=True)
