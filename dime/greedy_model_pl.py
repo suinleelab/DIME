@@ -10,7 +10,24 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
     '''
     Greedy CMI estimation module.
 
-    # TODO list args.
+    Args:
+      value_network: network for estimating each feature's CMI.
+      predictor: network for predicting response variable.
+      mask_layer: layer for masking unobserved features.
+      lr: learning rate.
+      max_features: maximum number of features to select.
+      eps: exploration rate.
+      loss_fn: loss function for training predictor.
+      val_loss_fn: loss function for validation performance.
+      factor: factor by which to reduce learning rate on plateau.
+      patience: number of epochs to wait before reducing learning rate.
+      min_lr: minimum learning rate for scheduler.
+      early_stopping_epochs: number of epochs to wait before stopping training.
+      eps_decay: decay rate for exploration rate.
+      eps_steps: number of exploration decay steps.
+      feature_costs: cost of each feature.
+      cmi_scaling: scaling method for CMI estimates ('none', 'positive', 'bounded').
+        Recommended value is 'bounded'.
     '''
 
     def __init__(self,
@@ -354,7 +371,17 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         '''
         Make predictions on a dataset using the trained model.
 
-        TODO list args
+        Args:
+          trainer: Lightning trainer object.
+          data_loader: PyTorch DataLoader object.
+          feature_costs: cost of each feature. Defaults to values used during training.
+          budget: maximum cost of selected features, for budget-constrained stopping criterion.
+          lam: penalty for selecting features with low CMI, for penalized stopping criterion.
+          confidence: minimum confidence of predictions, for confidence-constrained stopping criterion.
+
+        Returns:
+            Dictionary of predictions, masks, and labels if provided by dataloader.
+
         '''
         original_feature_costs = self.feature_costs.cpu()
         self.set_feature_costs(feature_costs)
