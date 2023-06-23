@@ -73,15 +73,15 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             feature_costs = torch.tensor(feature_costs)
         self.register_buffer('feature_costs', feature_costs)
 
-    def set_stopping_criterion(self, budget=None, lamda=None, confidence=None):
+    def set_stopping_criterion(self, budget=None, lam=None, confidence=None):
         '''Set parameters for stopping criterion.'''
-        if sum([budget is None, lamda is None, confidence is None]) != 2:
-            raise ValueError('Must specify exactly one of budget, lamda, and confidence.')
+        if sum([budget is None, lam is None, confidence is None]) != 2:
+            raise ValueError('Must specify exactly one of budget, lam, and confidence.')
         if budget is not None:
             self.budget = budget
             self.mode = 'budget'
-        elif lamda is not None:
-            self.lamda = lamda
+        elif lam is not None:
+            self.lam = lam
             self.mode = 'penalized'
         elif confidence is not None:
             self.confidence = confidence
@@ -113,6 +113,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         for _ in range(self.max_features):
             # Estimate CMI using value network.
             x_masked = self.mask_layer(x, mask)
+            # TODO remove unnecessary detach statement.
             if self.use_entropy:
                 entropy = get_entropy(pred_without_next_feature.detach()).unsqueeze(1)
                 # TODO why is sigmoid appended to the network? Activations should be applied here.
@@ -184,7 +185,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                 entropy = get_entropy(pred).unsqueeze(1)
                 pred_cmi = self.value_network(x_masked) * entropy
             else:
-                self.value_network(x_masked)
+                pred_cmi = self.value_network(x_masked)
 
             # Select next feature, ensure no repeats.
             pred_cmi -= 1e6 * mask
@@ -277,7 +278,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             # Stopping criteria.
             if self.mode == 'penalized':
                 # Check for sufficiently large CMI.
-                accept_sample = torch.max(pred_cmi / self.feature_costs, dim=1).values > self.lamda
+                accept_sample = torch.max(pred_cmi / self.feature_costs, dim=1).values > self.lam
 
             elif self.mode == 'budget':
                 # Check for remaining budget.
@@ -332,7 +333,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                 'pred': pred
             }
 
-    def inference(self, trainer, data_loader, feature_costs=None, budget=None, lamda=None, confidence=None):
+    def inference(self, trainer, data_loader, feature_costs=None, budget=None, lam=None, confidence=None):
         '''
         Make predictions on a dataset using the trained model.
 
@@ -340,7 +341,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         '''
         original_feature_costs = self.feature_costs.cpu()
         self.set_feature_costs(feature_costs)
-        self.set_stopping_criterion(budget, lamda, confidence)
+        self.set_stopping_criterion(budget, lam, confidence)
 
         # Generate and format predictions.
         outputs = trainer.predict(self, data_loader)
