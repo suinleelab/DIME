@@ -106,7 +106,9 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         x_masked = self.mask_layer(x, mask)
         pred_without_next_feature = self.predictor(x_masked)
         loss_without_next_feature = self.loss_fn(pred_without_next_feature, y)
-        self.manual_backward(loss_without_next_feature.mean() / (self.max_features + 1))
+        pred_loss = loss_without_next_feature.mean()
+        pred_loss_total += pred_loss.detach()
+        self.manual_backward(pred_loss / (self.max_features + 1))
         pred_without_next_feature = pred_without_next_feature.detach()
         loss_without_next_feature = loss_without_next_feature.detach()
 
@@ -138,44 +140,42 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             delta = loss_without_next_feature - loss_with_next_feature.detach()
             value_network_loss = nn.functional.mse_loss(pred_cmi[torch.arange(len(x)), actions], delta)
 
-            # Update for next step.
-            loss_without_next_feature = loss_with_next_feature.detach()
-            pred_without_next_feature = pred_with_next_feature.detach()
-
             # Calculate gradients.
             total_loss = torch.mean(value_network_loss) + torch.mean(loss_with_next_feature)
             self.manual_backward(total_loss / (self.max_features + 1))
 
-            # Update total loss.
+            # Updates.
             value_network_loss_total += torch.mean(value_network_loss)
             pred_loss_total += torch.mean(loss_with_next_feature)
+            loss_without_next_feature = loss_with_next_feature.detach()
+            pred_without_next_feature = pred_with_next_feature.detach()
 
         # Take optimizer step.
         opt.step()
         return {
             'value_network_loss': value_network_loss_total / self.max_features,
-            'predictor_loss': pred_loss_total / self.max_features}
+            'predictor_loss': pred_loss_total / (self.max_features + 1)}
 
     def training_epoch_end(self, outputs):
         # Get mean train losses.
-        pred_loss = torch.stack([x['predictor_loss'] for x in outputs]).mean()
-        value_network_loss = torch.stack([x['value_network_loss'] for x in outputs]).mean()
+        pred_loss = torch.stack([out['predictor_loss'] for out in outputs]).mean()
+        value_network_loss = torch.stack([out['value_network_loss'] for out in outputs]).mean()
 
         # Log in progress bar.
-        self.log('Predictor Loss Train', pred_loss, prog_bar=True, logger=False)
-        self.log('Value Network Loss Train', value_network_loss, prog_bar=True, logger=False)
+        self.log('Loss Train/Mean', pred_loss, prog_bar=True, logger=False)
+        self.log('Value Loss Train/Mean', value_network_loss, prog_bar=True, logger=False)
 
         # Log in tensorboard.
-        self.logger.experiment.add_scalar('Predictor Loss/Train', pred_loss, self.current_epoch)
-        self.logger.experiment.add_scalar('Value Network Loss/Train', value_network_loss, self.current_epoch)
+        self.logger.experiment.add_scalar('Loss Train/Mean', pred_loss, self.current_epoch)
+        self.logger.experiment.add_scalar('Value Loss Train/Mean', value_network_loss, self.current_epoch)
 
-    # TODO this is based on final rather than average loss, which is not what we want.
     def validation_step(self, batch, batch_idx):
         # Setup.
         x, y = batch
         mask = torch.zeros(len(x), self.mask_size, dtype=x.dtype, device=x.device)
         x_masked = self.mask_layer(x, mask)
         pred = self.predictor(x_masked)
+        pred_list = [pred]
 
         for _ in range(self.max_features):
             # Estimate CMI using value network.
@@ -195,40 +195,54 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             # Make prediction.
             x_masked = self.mask_layer(x, mask)
             pred = self.predictor(x_masked)
+            pred_list.append(pred)
 
-        return pred, y
+        # return pred, y
+        return pred_list, y
 
     def validation_epoch_end(self, outputs):
         pred_list, y_list = zip(*outputs)
-        pred_loss = self.loss_fn(torch.cat(pred_list), torch.cat(y_list)).mean()
-        val_loss = self.val_loss_fn(torch.cat(pred_list), torch.cat(y_list))
+        y = torch.cat(y_list)
+        preds_cat = [torch.cat(preds) for preds in zip(*pred_list)]
+        pred_loss_ = [self.loss_fn(preds, y).mean() for preds in preds_cat]
+        val_loss_ = [self.val_loss_fn(preds, y) for preds in preds_cat]
+        pred_loss_mean = torch.stack(pred_loss_).mean()
+        val_loss_mean = torch.stack(val_loss_).mean()
+        pred_loss_final = pred_loss_[-1]
+        val_loss_final = val_loss_[-1]
 
         # Log in progress bar.
-        self.log('Predictor Loss Val', pred_loss, prog_bar=True, logger=False)
-        self.log('Performance_Val', val_loss, prog_bar=True, logger=False)
+        self.log('Loss Val/Mean', pred_loss_mean, prog_bar=True, logger=False)
+        self.log('Perf Val/Mean', val_loss_mean, prog_bar=True, logger=False)
+        self.log('Loss Val/Final', pred_loss_final, prog_bar=True, logger=False)
+        self.log('Perf Val/Final', val_loss_final, prog_bar=True, logger=False)
         self.log('Eps Value', self.eps, prog_bar=True, logger=False)
 
         # Log in tensorboard.
-        self.logger.experiment.add_scalar('Predictor Loss/Val', pred_loss, self.current_epoch)
-        self.logger.experiment.add_scalar('Predictor Performance/Val', val_loss, self.current_epoch)
+        self.logger.experiment.add_scalar('Loss Val/Mean', pred_loss_mean, self.current_epoch)
+        self.logger.experiment.add_scalar('Perf Val/Mean', val_loss_mean, self.current_epoch)
+        self.logger.experiment.add_scalar('Loss Val/Final', pred_loss_final, self.current_epoch)
+        self.logger.experiment.add_scalar('Perf Val/Final', val_loss_final, self.current_epoch)
         self.logger.experiment.add_scalar('Eps Value', self.eps, self.current_epoch)
 
         # Take lr scheduler step using loss.
         sch = self.lr_schedulers()
-        sch.step(pred_loss)
+        sch.step(pred_loss_mean)
 
         # Check for loss improvement.
-        if pred_loss == sch.best:
+        if pred_loss_mean == sch.best:
             self.num_bad_epochs = 0
         else:
             self.num_bad_epochs += 1
 
         if self.num_bad_epochs > self.early_stopping_epochs:
             # Decay epsilon.
-            print(f'Decaying eps to {self.eps}, step = {self.num_epsilon_steps + 1}')
             self.eps *= self.eps_decay
             self.num_bad_epochs = 0
             self.num_epsilon_steps += 1
+            print(f'Decaying eps to {self.eps:.5f}, step = {self.num_epsilon_steps}')
+
+            # Early stopping.
             if self.num_epsilon_steps >= self.eps_steps:
                 self.trainer.should_stop = True
 
