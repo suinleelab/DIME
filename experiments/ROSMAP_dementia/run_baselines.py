@@ -14,11 +14,9 @@ import torch.optim as optim
 from tqdm import tqdm
 import sys
 sys.path.append('../')
-from baselines import  eddi, pvae, iterative, dfs, cae
+from baselines import eddi, pvae, iterative, dfs, cae
 sys.path.append('../../')
 from baseline_models.base_model import BaseModel
-
-#from baselines import EDDI, PVAE
 
 # Set up command line arguments
 parser = argparse.ArgumentParser()
@@ -72,11 +70,9 @@ if __name__ == '__main__':
         train_dataset, batch_size=128, shuffle=True, pin_memory=True,
         drop_last=True, num_workers=4)
     val_dataloader = DataLoader(
-        val_dataset, batch_size=128, shuffle=False, pin_memory=True,
-        drop_last=True, num_workers=4)
+        val_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
     test_dataloader = DataLoader(
-        test_dataset, batch_size=128, shuffle=False, pin_memory=True,
-        drop_last=True, num_workers=4)
+        test_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
 
     num_features = list(range(1, 12, 1))
     mask_layer = MaskLayerGrouped(append=True, group_matrix=torch.tensor(feature_groups_mask))
@@ -125,7 +121,8 @@ if __name__ == '__main__':
                 print(f"selected_groups={selected_groups}")
                 selected_features = []
                 for i in range(num):
-                    selected_features += map(lambda x: feat_to_ind[x], feature_groups_dict[feature_group_indices[selected_groups[i]]])
+                    selected_features += map(lambda x: feat_to_ind[x],
+                                             feature_groups_dict[feature_group_indices[selected_groups[i]]])
                 print(selected_features)
 
                 # Prepare module to mask all but top features

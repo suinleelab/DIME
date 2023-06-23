@@ -126,7 +126,6 @@ if __name__ == '__main__':
     else:
         # Set up networks.
         backbone, expansion = ResNet18Backbone(eval(pretrained_model_name + '(pretrained=True)'))
-        print(expansion)
         predictor = Predictor(backbone, expansion, num_classes=100)
         block_layer_stride = 1
         if mask_width == 14:

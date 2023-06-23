@@ -54,13 +54,11 @@ if __name__ == '__main__':
         train_dataset, batch_size=128, shuffle=True, pin_memory=True,
         drop_last=True, num_workers=4)
     val_dataloader = DataLoader(
-        val_dataset, batch_size=128, shuffle=False, pin_memory=True,
-        drop_last=True, num_workers=4)
+        val_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
     
     # test_dataset = torch.utils.data.Subset(test_dataset, range(0, 256))
     test_dataloader = DataLoader(
-        test_dataset, batch_size=128, shuffle=False, pin_memory=True,
-        drop_last=True, num_workers=4)
+        test_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
 
     num_features = [3, 5, 10, 15, 20, 25]
     max_features = 35

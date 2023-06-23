@@ -68,10 +68,7 @@ if __name__ == '__main__':
             nn.Dropout(dropout),
             nn.Linear(hidden, d_in),
             nn.Sigmoid())
-
-        # Tie weights
-        value_network[0] = predictor[0]
-        value_network[3] = predictor[3]
+        
         mask_layer = MaskLayer(append=True, mask_size=d_in)
         
         if path.exists(f"results/pretrained_predictor_trial_save_best_loss_{trial}.pth"):
@@ -108,7 +105,7 @@ if __name__ == '__main__':
                     save_top_k=1,
                     monitor='Predictor Loss Val',
                     mode='min',
-                    filename='best_val_perfomance_model',
+                    filename='best_val_loss_model',
                     verbose=False
                 )
 
@@ -129,12 +126,10 @@ if __name__ == '__main__':
             train_dataset, batch_size=128, shuffle=True, pin_memory=True,
             drop_last=True, num_workers=4)
         val_dataloader = DataLoader(
-            val_dataset, batch_size=128, shuffle=False, pin_memory=True,
-            drop_last=True, num_workers=4)
+            val_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
             
         test_dataloader = DataLoader(
-            test_dataset, batch_size=128, shuffle=False, pin_memory=True,
-            drop_last=True, num_workers=4)
+            test_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
 
         # Jointly train value network and predictor
         trainer = Trainer(

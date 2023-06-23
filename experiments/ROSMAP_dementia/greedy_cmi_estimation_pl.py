@@ -125,12 +125,10 @@ if __name__ == '__main__':
             drop_last=True, num_workers=4)
             
         val_dataloader = DataLoader(
-            val_dataset, batch_size=128, shuffle=False, pin_memory=True,
-            drop_last=True, num_workers=4)
+            val_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
             
         test_dataloader = DataLoader(
-            test_dataset, batch_size=128, shuffle=False, pin_memory=True,
-            drop_last=True, num_workers=4)
+            test_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
 
         # Train CMI estimator
         print("Training CMI estimator")
@@ -150,7 +148,7 @@ if __name__ == '__main__':
                     save_top_k=1,
                     monitor='Predictor Loss Val',
                     mode='min',
-                    filename='best_val_perfomance_model',
+                    filename='best_val_loss_model',
                     verbose=False
                 )
 
