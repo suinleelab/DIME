@@ -132,7 +132,7 @@ if __name__ == '__main__':
     logger = TensorBoardLogger("logs", name=f"{run_description}")
     checkpoint_callback = best_hard_callback = ModelCheckpoint(
                 save_top_k=1,
-                monitor='Performance_Val',
+                monitor='Perf Val/Mean',
                 mode='max',
                 filename='best_val_perfomance_model',
                 verbose=False

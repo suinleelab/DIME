@@ -95,7 +95,7 @@ if __name__ == '__main__':
         logger = TensorBoardLogger("logs", name=f"{run_description}")
         checkpoint_callback = ModelCheckpoint(
                     save_top_k=1,
-                    monitor='Performance_Val',
+                    monitor='Perf Val/Mean',
                     mode='max',
                     filename='best_val_perfomance_model',
                     verbose=False
@@ -103,7 +103,7 @@ if __name__ == '__main__':
         
         checkpoint_callback_loss = ModelCheckpoint(
                     save_top_k=1,
-                    monitor='Predictor Loss Val',
+                    monitor='Loss Val/Mean',
                     mode='min',
                     filename='best_val_loss_model',
                     verbose=False
