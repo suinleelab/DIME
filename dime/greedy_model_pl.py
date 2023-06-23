@@ -231,9 +231,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             if self.num_epsilon_steps >= self.eps_steps:
                 self.trainer.should_stop = True
 
-            # TODO should we reset all optimizer hyperparameters, not just the learning rate?
-            # TODO should we also reset the scheduler?
-            # Reset optimizer learning rate.
+            # Reset optimizer learning rate. Could fully reset optimizer and scheduler, but this is simpler.
             for g in self.optimizers().param_groups:
                 g['lr'] = self.lr
 
