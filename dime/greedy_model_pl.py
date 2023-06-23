@@ -26,10 +26,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                  patience=2,
                  min_lr=1e-6,
                  early_stopping_epochs=None,
-                 # TODO rename this to eps_factor or eps_decay
-                 eps_decay_rate=0.2,
-                 # TODO delete this, it's redundant with ep_steps
-                 eps_decay=True,
+                 eps_decay=0.2,
                  eps_steps=1,
                  feature_costs=None,
                  use_entropy=True):
@@ -61,7 +58,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
 
         # Save CMI estimation hyperparameters.
         self.eps = eps
-        self.eps_factor = eps_decay_rate
+        self.eps_factor = eps_decay
         self.eps_steps = eps_steps
         self.use_entropy = use_entropy
 
@@ -77,15 +74,15 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             feature_costs = torch.tensor(feature_costs)
         self.register_buffer('feature_costs', feature_costs)
 
-    def set_stopping_criterion(self, budget=None, lamda=None, confidence=None):
+    def set_stopping_criterion(self, budget=None, lam=None, confidence=None):
         '''Set parameters for stopping criterion.'''
-        if sum([budget is None, lamda is None, confidence is None]) != 2:
-            raise ValueError('Must specify exactly one of budget, lamda, and confidence.')
+        if sum([budget is None, lam is None, confidence is None]) != 2:
+            raise ValueError('Must specify exactly one of budget, lam, and confidence.')
         if budget is not None:
             self.budget = budget
             self.mode = 'budget'
-        elif lamda is not None:
-            self.lamda = lamda
+        elif lam is not None:
+            self.lam = lam
             self.mode = 'penalized'
         elif confidence is not None:
             self.confidence = confidence
@@ -284,7 +281,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
             # Stopping criteria.
             if self.mode == 'penalized':
                 # Check for sufficiently large CMI.
-                accept_sample = torch.max(pred_cmi / self.feature_costs, dim=1).values > self.lamda
+                accept_sample = torch.max(pred_cmi / self.feature_costs, dim=1).values > self.lam
 
             elif self.mode == 'budget':
                 # Check for remaining budget.
@@ -339,7 +336,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                 'pred': pred
             }
 
-    def inference(self, trainer, data_loader, feature_costs=None, budget=None, lamda=None, confidence=None):
+    def inference(self, trainer, data_loader, feature_costs=None, budget=None, lam=None, confidence=None):
         '''
         Make predictions on a dataset using the trained model.
 
@@ -347,7 +344,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         '''
         original_feature_costs = self.feature_costs.cpu()
         self.set_feature_costs(feature_costs)
-        self.set_stopping_criterion(budget, lamda, confidence)
+        self.set_stopping_criterion(budget, lam, confidence)
 
         # Generate and format predictions.
         outputs = trainer.predict(self, data_loader)

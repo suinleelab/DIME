@@ -165,8 +165,8 @@ if __name__ == '__main__':
                                                     eps=0.0,
                                                     loss_fn=nn.CrossEntropyLoss(reduction='none'),
                                                     val_loss_fn=AUROC(task='multiclass', num_classes=2),
-                                                    eps_decay=True,
-                                                    eps_decay_rate=0.2,
+                                                    eps_decay=0.2,
+                                                    eps_steps=10,
                                                     patience=5,
                                                     feature_costs=feature_costs,
                                                     use_entropy=True)

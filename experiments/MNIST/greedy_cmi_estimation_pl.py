@@ -91,7 +91,7 @@ if __name__ == '__main__':
                          loss_fn=nn.CrossEntropyLoss(),
                          verbose=True)
         
-        run_description = f"max_features_50_eps_0.05_with_decay_rate_0.2_save_best_loss_with_entropy_fix_trial_{trial}"
+        run_description = f"max_features_50_eps_0.05_with_decay_rate_0.2_save_best_loss_trial_{trial}"
         logger = TensorBoardLogger("logs", name=f"{run_description}")
         checkpoint_callback = ModelCheckpoint(
                     save_top_k=1,
@@ -115,8 +115,8 @@ if __name__ == '__main__':
                                                     eps=0.05,
                                                     loss_fn=nn.CrossEntropyLoss(reduction='none'),
                                                     val_loss_fn=acc_metric,
-                                                    eps_decay=True,
-                                                    eps_decay_rate=0.2,
+                                                    eps_decay=0.2,
+                                                    eps_steps=10,
                                                     patience=5,
                                                     feature_costs=None,
                                                     use_entropy=True)
