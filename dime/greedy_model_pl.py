@@ -26,10 +26,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
                  patience=2,
                  min_lr=1e-6,
                  early_stopping_epochs=None,
-                 # TODO rename this to eps_factor or eps_decay
-                 eps_decay_rate=0.2,
-                 # TODO delete this, it's redundant with ep_steps
-                 eps_decay=True,
+                 eps_decay=0.2,
                  eps_steps=1,
                  feature_costs=None,
                  use_entropy=True):
@@ -53,7 +50,6 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         self.max_features = max_features
         self.mask_size = self.mask_layer.mask_size
         self.set_feature_costs(feature_costs)
-        self.mode = None
 
         # Save loss functions.
         self.loss_fn = loss_fn
@@ -61,7 +57,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
 
         # Save CMI estimation hyperparameters.
         self.eps = eps
-        self.eps_factor = eps_decay_rate
+        self.eps_decay = eps_decay
         self.eps_steps = eps_steps
         self.use_entropy = use_entropy
 
@@ -70,7 +66,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         # self.save_hyperparameters()
 
     def set_feature_costs(self, feature_costs=None):
-        '''Set feature cost values. Defaults to uniform cost.'''
+        '''Set feature cost values. Default is uniform cost.'''
         if feature_costs is None:
             feature_costs = torch.ones(self.mask_size)
         elif isinstance(feature_costs, np.ndarray):
@@ -169,8 +165,6 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         self.log('Value Network Loss Train', value_network_loss, prog_bar=True, logger=False)
 
         # Log in tensorboard.
-        # TODO is this redundant, could we just set logger=True in the log function? Maybe not,
-        # because we want to pass the current epoch. But perhaps that would be captured automatically
         self.logger.experiment.add_scalar('Predictor Loss/Train', pred_loss, self.current_epoch)
         self.logger.experiment.add_scalar('Value Network Loss/Train', value_network_loss, self.current_epoch)
 
@@ -211,6 +205,7 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
         # Log in progress bar.
         self.log('Predictor Loss Val', pred_loss, prog_bar=True, logger=False)
         self.log('Performance_Val', val_loss, prog_bar=True, logger=False)
+        self.log('Eps Value', self.eps, prog_bar=True, logger=False)
 
         # Log in tensorboard.
         self.logger.experiment.add_scalar('Predictor Loss/Val', pred_loss, self.current_epoch)
@@ -229,8 +224,8 @@ class GreedyCMIEstimatorPL(pl.LightningModule):
 
         if self.num_bad_epochs > self.early_stopping_epochs:
             # Decay epsilon.
-            print(f'Decaying eps to {self.eps}, step = {self.num_epsilon_steps}')
-            self.eps *= self.eps_factor
+            print(f'Decaying eps to {self.eps}, step = {self.num_epsilon_steps + 1}')
+            self.eps *= self.eps_decay
             self.num_bad_epochs = 0
             self.num_epsilon_steps += 1
             if self.num_epsilon_steps >= self.eps_steps:
