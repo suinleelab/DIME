@@ -1,244 +1,103 @@
 import torch
-import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
-from copy import deepcopy
-from dime.utils import generate_uniform_mask, restore_parameters
-from tqdm import tqdm
+import pytorch_lightning as pl
+from dime.utils import generate_uniform_mask
 
 
-class MaskingPretrainer(nn.Module):
-    '''Pretrain model with missing features.'''
+class MaskingPretrainer(pl.LightningModule):
+    '''
+    Pretrain model with missing features.
 
-    def __init__(self, model, mask_layer):
+    TODO list args
+    '''
+
+    def __init__(self,
+                 model,
+                 mask_layer,
+                 lr,
+                 loss_fn,
+                 val_loss_fn,
+                 factor=0.2,
+                 patience=2,
+                 min_lr=1e-6,
+                 early_stopping_epochs=None):
         super().__init__()
+
+        # Save network modules.
         self.model = model
         self.mask_layer = mask_layer
-        
-    def fit(self,
-            train,
-            val,
-            mbsize,
-            lr,
-            nepochs,
-            loss_fn,
-            val_loss_fn=None,
-            val_loss_mode=None,
-            factor=0.2,
-            patience=2,
-            min_lr=1e-6,
-            early_stopping_epochs=None,
-            verbose=True,
-            trained_predictor_name='predictor.pth'):
-        '''
-        Train model.
-        
-        Args:
-          train:
-          val:
-          mbsize:
-          lr:
-          nepochs:
-          loss_fn:
-          val_loss_fn:
-          val_loss_mode:
-          factor:
-          patience:
-          min_lr:
-          early_stopping_epochs:
-          verbose:
-        '''
-        # Verify arguments.
-        if val_loss_fn is None:
-            val_loss_fn = loss_fn
-            val_loss_mode = 'min'
-        else:
-            if val_loss_mode is None:
-                raise ValueError('must specify val_loss_mode (min or max) when validation_loss_fn is specified')
+        self.mask_size = self.mask_layer.mask_size
 
-        # Set up data loaders.
-        train_loader = DataLoader(
-            train, batch_size=mbsize, shuffle=True, pin_memory=True,
-            drop_last=True, num_workers=4)
-        val_loader = DataLoader(
-            val, batch_size=mbsize, shuffle=False, pin_memory=True,
-            drop_last=True, num_workers=4)
-        
-        # Set up optimizer and lr scheduler.
-        model = self.model
-        mask_layer = self.mask_layer
-        device = next(model.parameters()).device
-        opt = optim.Adam(model.parameters(), lr=lr)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            opt, mode=val_loss_mode, factor=factor, patience=patience,
-            min_lr=min_lr, verbose=verbose)
-        
-        # Determine mask size.
-        if hasattr(mask_layer, 'mask_size') and (mask_layer.mask_size is not None):
-            mask_size = mask_layer.mask_size
-        else:
-            # Must be tabular (1d data).
-            x, y = next(iter(val))
-            assert len(x.shape) == 1
-            mask_size = len(x)
-
-        # For tracking best model and early stopping.
-        best_model = None
-        num_bad_epochs = 0
+        # Save optimization hyperparameters.
+        self.lr = lr
+        self.factor = factor
+        self.patience = patience
+        self.min_lr = min_lr
         if early_stopping_epochs is None:
             early_stopping_epochs = patience + 1
-      
-        for epoch in range(nepochs):
-            # Switch model to training mode.
-            model.train()
+        self.early_stopping_epochs = early_stopping_epochs
 
-            for batch in tqdm(train_loader):
-                x_sketch = None
-                
-                if len(batch) == 2:
-                    x, y = batch
-                else:
-                    x, x_sketch, y = batch
-                    x_sketch = x_sketch.to(device)
-                # Move to device.
-                x = x.to(device)
-                
-                y = y.to(device)
-                
-                # Generate missingness.
-                m = generate_uniform_mask(len(x), mask_size).to(device)
-                # m = torch.ones(len(x), mask_size).to(device)
-                # Calculate loss.
-                x_masked = mask_layer(x, m)
-                pred = model(x_masked)
+        # Save loss functions.
+        self.loss_fn = loss_fn
+        self.val_loss_fn = val_loss_fn
 
-                loss = loss_fn(pred, y)
+    def on_fit_start(self):
+        self.num_bad_epochs = 0
 
-                # Take gradient step.
-                loss.backward()
-                opt.step()
-                model.zero_grad()
-                
-            # Calculate validation loss.
-            model.eval()
-            with torch.no_grad():
-                # For mean loss.
-                pred_list = []
-                label_list = []
+    def training_step(self, batch, batch_idx):
+        # Setup for minibatch.
+        x, y = batch
+        mask = generate_uniform_mask(len(x), self.mask_size).to(x.device)
 
-                for batch in val_loader:
-                    x_sketch = None
-                    if len(batch) == 2:
-                        x, y = batch
-                    else:
-                        x, x_sketch, y = batch
-                        x_sketch = x_sketch.to(device)
-
-                    # Move to device.
-                    x = x.to(device)
-                    
-                    # Generate missingness.
-                    m = generate_uniform_mask(len(x), mask_size).to(device)
-
-                    # Calculate prediction.
-                    x_masked = mask_layer(x, m)
-                    pred = model(x_masked)
-
-                    pred_list.append(pred.cpu())
-                    label_list.append(y.cpu())
-                    
-                # Calculate loss.
-                y = torch.cat(label_list, 0)
-                pred = torch.cat(pred_list, 0)
-                val_loss = loss_fn(pred, y).item()
-                
-            # Print progress.
-            if verbose:
-                print(f'{"-"*8}Epoch {epoch+1}{"-"*8}')
-                print(f'Val loss = {val_loss:.4f}')
-                print(f'Val Performance = {val_loss_fn(pred, y)}')
-            # Update scheduler.
-            scheduler.step(val_loss)
-
-            # Check if best model.
-            if val_loss == scheduler.best:
-                best_model = deepcopy(model)
-                num_bad_epochs = 0
-            else:
-                num_bad_epochs += 1
-                
-            # Early stopping.
-            if num_bad_epochs > early_stopping_epochs:
-                if verbose:
-                    print(f'Stopping early at epoch {epoch+1}')
-                break
-
-        # Copy parameters from best model.
-        restore_parameters(model, best_model)
-
-        # save best model
-        torch.save(model.state_dict(), f"results/{trained_predictor_name}")
-        
-    # TODO unclear whether this should use masking or all inputs
-    def evaluate(self, dataset, metric, batch_size):
-        '''
-        Evaluate mean performance across a dataset.
-        
-        Args:
-          dataset:
-          metric:
-          batch_size:
-        '''
-        # Setup.
-        self.model.eval()
-        device = next(self.model.parameters()).device
-        loader = DataLoader(
-            dataset, batch_size=batch_size, shuffle=False, pin_memory=True,
-            drop_last=False, num_workers=4)
-
-        # Determine mask size.
-        if hasattr(self.mask_layer, 'mask_size') and (self.mask_layer.mask_size is not None):
-            mask_size = self.mask_layer.mask_size
-        else:
-            # Must be tabular (1d data).
-            x, y = next(iter(dataset))
-            assert len(x.shape) == 1
-            mask_size = len(x)
-
-        # For calculating mean loss.
-        pred_list = []
-        label_list = []
-
-        with torch.no_grad():
-            for x, y in loader:
-                # Move to GPU.
-                x = x.to(device)
-                mask = torch.ones(len(x), mask_size, device=device)
-
-                # Calculate loss.
-                pred = self.forward(x, mask)
-                pred_list.append(pred.cpu())
-                label_list.append(y.cpu())
-                
-            # Calculate metric(s).
-            y = torch.cat(label_list, 0)
-            pred = torch.cat(pred_list, 0)
-            if isinstance(metric, (tuple, list)):
-                score = [m(pred, y).item() for m in metric]
-            elif isinstance(metric, dict):
-                score = {name: m(pred, y).item() for name, m in metric.items()}
-            else:
-                score = metric(pred, y).item()
-                
-        return score
-    
-    def forward(self, x, mask):
-        '''
-        Generate model prediction.
-        
-        Args:
-          x:
-          mask:
-        '''
+        # Calculate predictions and loss.
         x_masked = self.mask_layer(x, mask)
-        return self.model(x_masked)
+        pred = self.model(x_masked)
+        return self.loss_fn(pred, y)
+
+    def train_epoch_end(self, outputs):
+        # Log loss in progress bar.
+        loss = torch.stack(outputs).mean()
+        self.log('Loss Train', loss, prog_bar=True, logger=True)
+
+    def validation_step(self, batch, batch_idx):
+        # Setup for minibatch.
+        x, y = batch
+        mask = generate_uniform_mask(len(x), self.mask_size).to(x.device)
+
+        # Calculate predictions.
+        x_masked = self.mask_layer(x, mask)
+        pred = self.model(x_masked)
+        return pred, y
+
+    def validation_epoch_end(self, outputs):
+        pred_list, y_list = zip(*outputs)
+        pred = torch.cat(pred_list)
+        y = torch.cat(y_list)
+        loss = self.loss_fn(pred, y)
+        val_loss = self.val_loss_fn(pred, y)
+
+        # Log to progress bar.
+        self.log('Loss Val', loss, prog_bar=True, logger=True)
+        self.log('Perf Val', val_loss, prog_bar=True, logger=True)
+
+        # Perform manual early stopping. Note that this is called before lr scheduler step.
+        sch = self.lr_schedulers()
+        if loss < sch.best:
+            self.num_bad_epochs = 0
+        else:
+            self.num_bad_epochs += 1
+
+        if self.num_bad_epochs > self.early_stopping_epochs:
+            # Early stopping.
+            self.trainer.should_stop = True
+
+    def configure_optimizers(self):
+        opt = optim.Adam(self.parameters(), lr=self.lr)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            opt, factor=self.factor, patience=self.patience,
+            min_lr=self.min_lr, verbose=True)
+        return {
+            'optimizer': opt,
+            'lr_scheduler': scheduler,
+            'monitor': 'Loss Val'
+        }
