@@ -10,16 +10,14 @@ from torch.utils.data import Dataset, Subset
 
 class DenseDatasetSelected(Dataset):
     def __init__(self, data_dir, feature_list=None, cols_to_drop=None):
-        super().__init__()
-
-        # Load data
+        # Load data.
         self.data_dir = os.path.expanduser(data_dir)
         data = pd.read_csv(self.data_dir)
 
         if cols_to_drop is not None:
             data = data.drop(columns=cols_to_drop)
 
-        # Set features, x, y
+        # Set features, inputs and outputs.
         if feature_list is not None:
             self.features = feature_list
         else:
@@ -36,9 +34,7 @@ class DenseDatasetSelected(Dataset):
 
 class ROSMAPDataset(Dataset):
     def __init__(self, data_dir, split='train', cols_to_drop=None, use_apoe=False):
-        super().__init__()
-
-        # Load data
+        # Load data.
         self.data_dir = os.path.expanduser(data_dir)
         if use_apoe:
             data = pd.read_csv(data_dir + f"/standardized_X_{split}.csv")
@@ -167,19 +163,19 @@ def get_xy(dataset):
 
 
 def data_split(dataset, val_portion=0.2, test_portion=0.2, random_state=0):
-    # Shuffle sample indices
+    # Shuffle sample indices.
     rng = np.random.default_rng(random_state)
     inds = np.arange(len(dataset))
     rng.shuffle(inds)
 
-    # Assign indices to splits
+    # Assign indices to splits.
     n_val = int(val_portion * len(dataset))
     n_test = int(test_portion * len(dataset))
     test_inds = inds[:n_test]
     val_inds = inds[n_test:(n_test + n_val)]
     train_inds = inds[(n_test + n_val):]
 
-    # Create split datasets
+    # Create split datasets.
     test_dataset = Subset(dataset, test_inds)
     val_dataset = Subset(dataset, val_inds)
     train_dataset = Subset(dataset, train_inds)
