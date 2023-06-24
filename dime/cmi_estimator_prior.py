@@ -8,7 +8,7 @@ from dime.utils import get_entropy, get_confidence, ind_to_onehot
 
 class CMIEstimatorPrior(pl.LightningModule):
     '''
-    Greedy CMI estimation module.
+    Greedy CMI estimation module that incorporates prior information.
 
     Args:
       value_network: network for estimating each feature's CMI.

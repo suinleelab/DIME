@@ -8,7 +8,16 @@ class MaskingPretrainer(pl.LightningModule):
     '''
     Pretrain model with missing features.
 
-    TODO list args
+    Args:
+      model: network for predicting response variable.
+      mask_layer: layer for masking unobserved features.
+      lr: learning rate.
+      loss_fn: loss function for training predictor.
+      val_loss_fn: loss function for validation performance.
+      factor: factor by which to reduce learning rate on plateau.
+      patience: number of epochs to wait before reducing learning rate.
+      min_lr: minimum learning rate for scheduler.
+      early_stopping_epochs: number of epochs to wait before stopping training.
     '''
 
     def __init__(self,
