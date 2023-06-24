@@ -4,7 +4,7 @@ import torch
 import argparse
 import numpy as np
 import torch.nn as nn
-from torchmetrics import AUROC
+from torchmetrics import Accuracy
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
@@ -12,10 +12,9 @@ import os
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from dime.data_utils import MaskLayerGaussian, MaskLayer2d
-from dime import GreedyCMIEstimatorPL
-from dime import MaskingPretrainer
-from dime.vit import PredictorViT, ValueNetworViT
+from dime.utils import MaskLayer2d
+from dime import CMIEstimator, MaskingPretrainer
+from dime.vit import PredictorViT, ValueNetworkViT
 from dime.resnet_imagenet import Predictor, ValueNetwork, ResNet18Backbone
 import timm
 
@@ -46,6 +45,7 @@ parser.add_argument('--pretrained_model_name', type=str,
                     help="Name of the pretrained model to use")
 
 if __name__ == '__main__':
+    acc_metric = Accuracy(task='multiclass', num_classes=100)
     # Parse args
     args = parser.parse_args()
     mask_type = args.mask_type
@@ -63,10 +63,7 @@ if __name__ == '__main__':
        or (network_type == 'resnet' and pretrained_model_name not in resnet_model_options):
         raise argparse.ArgumentError("Network type and model name are not compatible")
 
-    if mask_type == 'gaussian':
-        mask_layer = MaskLayerGaussian(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
-    else:
-        mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
+    mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
       
     device = torch.device('cuda', args.gpu)
     dataset_path = "/projects/<labname>/<username>/ImageNet100"
@@ -122,7 +119,7 @@ if __name__ == '__main__':
     if network_type == 'vit':
         backbone = timm.create_model(pretrained_model_name, pretrained=True)
         predictor = PredictorViT(backbone, num_classes=100)
-        value_network = ValueNetworViT(backbone, mask_width=mask_width)
+        value_network = ValueNetworkViT(backbone, mask_width=mask_width)
     else:
         # Set up networks.
         backbone, expansion = ResNet18Backbone(eval(pretrained_model_name + '(pretrained=True)'))
@@ -133,28 +130,20 @@ if __name__ == '__main__':
         
         value_network = ValueNetwork(backbone, expansion, block_layer_stride=block_layer_stride)
 
-    trained_predictor_name = f"imagenet100_{pretrained_model_name}_predictor_lr_1e-5_{mask_type}_mask_width_{mask_width}.pth"
-    if os.path.exists(f"results/{trained_predictor_name}"):
-        # Load pretrained predictor
-        print("Loading Pretrained Predictor")
-        print("-"*8)
-        predictor.load_state_dict(torch.load(f"results/{trained_predictor_name}"))
-    else:
-        # Pretrain predictor
-        print("Pretraining Predictor")
-        pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
-        pretrain.fit(train_dataset,
-                     val_dataset,
-                     mbsize=mbsize,
-                     lr=lr,
-                     min_lr=min_lr,
-                     nepochs=100,
-                     loss_fn=nn.CrossEntropyLoss(),
-                     val_loss_fn=AUROC(task='multiclass', num_classes=2),
-                     val_loss_mode='max',
-                     patience=5,
-                     verbose=True,
-                     trained_predictor_name=trained_predictor_name)
+    pretrain = MaskingPretrainer(
+            predictor,
+            mask_layer,
+            lr=1e-5,
+            loss_fn=nn.CrossEntropyLoss(),
+            val_loss_fn=acc_metric)
+    
+    trainer = Trainer(
+            accelerator='gpu',
+            devices=[args.gpu],
+            max_epochs=200,
+            num_sanity_val_steps=0
+        )
+    trainer.fit(pretrain, train_dataloader, val_dataloader)
 
     run_description = f"max_features_50_{pretrained_model_name}_with_token_individual_uniform_feature_cost_{mask_type}"
     logger = TensorBoardLogger("logs", name=f"{run_description}")
@@ -167,18 +156,19 @@ if __name__ == '__main__':
             )
     
     # Jointly train predictor and value networks
-    greedy_cmi_estimator = GreedyCMIEstimatorPL(value_network, predictor, mask_layer,
-                                                lr=lr,
-                                                min_lr=min_lr,
-                                                max_features=50,
-                                                eps=0.05,
-                                                loss_fn=nn.CrossEntropyLoss(reduction='none'),
-                                                val_loss_fn=AUROC(task='multiclass', num_classes=100),
-                                                eps_decay=0.2,
-                                                eps_steps=10,
-                                                patience=3,
-                                                feature_costs=None,
-                                                use_entropy=True)
+    greedy_cmi_estimator = CMIEstimator(value_network, 
+                                        predictor, 
+                                        mask_layer,
+                                        lr=lr,
+                                        min_lr=min_lr,
+                                        max_features=50,
+                                        eps=0.05,
+                                        loss_fn=nn.CrossEntropyLoss(reduction='none'),
+                                        val_loss_fn=acc_metric,
+                                        eps_decay=0.2,
+                                        eps_steps=10,
+                                        patience=3,
+                                        feature_costs=None)
     
     trainer = Trainer(
                 accelerator='gpu',

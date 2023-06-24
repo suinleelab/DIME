@@ -12,10 +12,11 @@ import pandas as pd
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from dime.data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
-from dime import MaskingPretrainerPriorInfo
-from dime import GreedyCMIEstimatorPLPriorInfo
-from dime.vit import PredictorSemiSupervisedVit, ValueNetworkSemiSupervisedVit
+from dime.data_utils import HistopathologyDownsampledEdgeDataset
+from dime.utils import MaskLayer2d
+from dime import MaskingPretrainerPrior
+from dime import CMIEstimatorPrior
+from dime.vit import PredictorViTPrior, ValueNetworkViTPrior
 import timm
 
 vit_model_options = ['vit_small_patch16_224', 'vit_tiny_patch16_224']
@@ -40,6 +41,8 @@ parser.add_argument('--pretrained_model_name', type=str,
                     help="Name of the pretrained model to use")
 
 if __name__ == '__main__':
+    auc_metric = AUROC(task='multiclass', num_classes=2)
+
     # Parse args
     args = parser.parse_args()
     mask_type = args.mask_type
@@ -52,10 +55,7 @@ if __name__ == '__main__':
     else:
         min_lr = 1e-8
 
-    if mask_type == 'gaussian':
-        mask_layer = MaskLayerGaussian(append=False, mask_width=mask_width, patch_size=image_size/mask_width, sigma=1)
-    else:
-        mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
+    mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         
     device = torch.device('cuda', args.gpu)
     norm_constants = ((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
@@ -108,31 +108,23 @@ if __name__ == '__main__':
     backbone1 = timm.create_model(pretrained_model_name, pretrained=True)
     backbone2 = timm.create_model(pretrained_model_name, pretrained=True)
 
-    predictor = PredictorSemiSupervisedVit(backbone1, backbone2, num_classes=2)
-    value_network = ValueNetworkSemiSupervisedVit(backbone1, backbone2, use_entropy=True)
+    predictor = PredictorViTPrior(backbone1, backbone2, num_classes=2)
+    value_network = ValueNetworkViTPrior(backbone1, backbone2)
 
-    trained_predictor_name = f"{pretrained_model_name}_prior_info_individual_backbone_predictor_lr_{str(lr)}.pth"
-    if os.path.exists(f"results/{trained_predictor_name}"):
-        # Load pretrained predictor
-        print("Loading Pretrained Predictor")
-        print("-"*8)
-        predictor.load_state_dict(torch.load(f"results/{trained_predictor_name}"))
-    else:
-        # Pretrain predictor
-        print("Pretraining Predictor")
-        pretrain = MaskingPretrainerPriorInfo(predictor, mask_layer).to(device)
-        pretrain.fit(train_dataset,
-                     val_dataset,
-                     mbsize=mbsize,
-                     lr=lr,
-                     min_lr=min_lr,
-                     nepochs=100,
-                     loss_fn=nn.CrossEntropyLoss(),
-                     val_loss_fn=AUROC(task='multiclass', num_classes=2),
-                     val_loss_mode='max',
-                     patience=5,
-                     verbose=True,
-                     trained_predictor_name=trained_predictor_name)
+    pretrain = MaskingPretrainerPrior(
+            predictor,
+            mask_layer,
+            lr=1e-5,
+            loss_fn=nn.CrossEntropyLoss(),
+            val_loss_fn=auc_metric)
+    
+    trainer = Trainer(
+        accelerator='gpu',
+        devices=[args.gpu],
+        max_epochs=200,
+        num_sanity_val_steps=0
+    )
+    trainer.fit(pretrain, train_dataloader, val_dataloader)
 
     run_description = f"max_features_60_{pretrained_model_name}_lr_{str(lr)}_prior_info_individual_backbone_use_entropy"
     logger = TensorBoardLogger("logs", name=f"{run_description}")
@@ -145,18 +137,19 @@ if __name__ == '__main__':
             )
 
     # Jointly train predictor and value networks
-    greedy_cmi_estimator = GreedyCMIEstimatorPLPriorInfo(value_network, predictor, mask_layer,
-                                                         lr=lr,
-                                                         min_lr=min_lr,
-                                                         max_features=60,
-                                                         eps=0.05,
-                                                         loss_fn=nn.CrossEntropyLoss(reduction='none'),
-                                                         val_loss_fn=AUROC(task='multiclass', num_classes=2),
-                                                         eps_decay=0.2,
-                                                         eps_steps=10,
-                                                         patience=3,
-                                                         feature_costs=None,
-                                                         use_entropy=True)
+    greedy_cmi_estimator = CMIEstimatorPrior(value_network,
+                                             predictor,
+                                             mask_layer,
+                                             lr=lr,
+                                             min_lr=min_lr,
+                                             max_features=60,
+                                             eps=0.05,
+                                             loss_fn=nn.CrossEntropyLoss(reduction='none'),
+                                             val_loss_fn=AUROC(task='multiclass', num_classes=2),
+                                             eps_decay=0.2,
+                                             eps_steps=10,
+                                             patience=3,
+                                             feature_costs=None)
 
     trainer = Trainer(
                 accelerator='gpu',

@@ -11,11 +11,12 @@ from pytorch_lightning import Trainer
 import os
 from torch.utils.data import DataLoader
 import pandas as pd
-from dime.data_utils import MaskLayerGaussian, MaskLayer2d, HistopathologyDownsampledEdgeDataset
+from dime.data_utils import HistopathologyDownsampledEdgeDataset
+from dime.utils import MaskLayer2d
 from dime.masking_pretrainer import MaskingPretrainer
 from dime.greedy_model_pl import GreedyCMIEstimatorPL
 from dime.sketch_supervision_predictor import SketchSupervisionPredictor
-from dime.vit import PredictorViT, ValueNetworViT, PredictorSemiSupervisedVit
+from dime.vit import PredictorViT, ValueNetworkViT, PredictorViTPrior
 import timm
 
 # Set up command line arguments
@@ -102,8 +103,8 @@ if __name__ == '__main__':
     # value_network = ValueNetwork(backbone, block_layer_stride=block_layer_stride)
     backbone = timm.create_model(pretrained_model_name, pretrained=True)
     predictor = PredictorViT(backbone, num_classes=2)
-    value_network = ValueNetworViT(backbone, mask_width=mask_width)
-    predictor_with_sketch = PredictorSemiSupervisedVit(backbone, backbone, num_classes=2)
+    value_network = ValueNetworkViT(backbone, mask_width=mask_width)
+    predictor_with_sketch = PredictorViTPrior(backbone, backbone, num_classes=2)
 
     trained_predictor_name = f"{pretrained_model_name}_predictor_sketch_in_predictor_lr_{str(lr)}.pth"
     if os.path.exists(f"results/{trained_predictor_name}"):

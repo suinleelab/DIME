@@ -5,12 +5,11 @@ import numpy as np
 import torch.nn as nn
 from torchmetrics import AUROC
 from torch.utils.data import DataLoader
-import os
-from os import path
 import pandas as pd
-from dime.data_utils import ROSMAPDataset, get_group_matrix, MaskLayerGrouped
+from dime.data_utils import ROSMAPDataset, get_group_matrix
+from dime.utils import MaskLayerGrouped
 from dime import MaskingPretrainer
-from dime import GreedyCMIEstimatorPL
+from dime import CMIEstimator
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -94,30 +93,6 @@ if __name__ == '__main__':
             nn.Sigmoid())
 
         mask_layer = MaskLayerGrouped(append=True, group_matrix=torch.tensor(feature_groups_mask))
-        trained_predictor_name = f"pretrained_predictor_pl_new_all_features_use_apoe_{args.use_apoe}_feature_costs_{args.use_feature_costs}_trial_{trial_num}.pth"
-
-        if not path.exists("./results"):
-            os.makedirs("./results")
-
-        if path.exists(f"results/{trained_predictor_name}"):
-            # Load pretrained predictor
-            print("Loading Pretrained Predictor")
-            print("-"*8)
-            predictor.load_state_dict(torch.load(f"results/{trained_predictor_name}"))
-        else:
-            # Pretrain predictor
-            pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
-            pretrain.fit(train_dataset,
-                         val_dataset,
-                         mbsize=128,
-                         lr=1e-3,
-                         nepochs=100,
-                         loss_fn=nn.CrossEntropyLoss(),
-                         val_loss_fn=AUROC(task='multiclass', num_classes=2),
-                         val_loss_mode='max',
-                         patience=5,
-                         verbose=True,
-                         trained_predictor_name=trained_predictor_name)
 
         # Set up data loaders.
         train_dataloader = DataLoader(
@@ -129,6 +104,21 @@ if __name__ == '__main__':
             
         test_dataloader = DataLoader(
             test_dataset, batch_size=128, shuffle=False, pin_memory=True, num_workers=4)
+        
+        pretrain = MaskingPretrainer(
+            predictor,
+            mask_layer,
+            lr=1e-3,
+            loss_fn=nn.CrossEntropyLoss(),
+            val_loss_fn=AUROC(task='multiclass', num_classes=2))
+        
+        trainer = Trainer(
+            accelerator='gpu',
+            devices=[args.gpu],
+            max_epochs=200,
+            num_sanity_val_steps=0
+        )
+        trainer.fit(pretrain, train_dataloader, val_dataloader)
 
         # Train CMI estimator
         print("Training CMI estimator")
@@ -152,18 +142,19 @@ if __name__ == '__main__':
                     verbose=False
                 )
 
-        greedy_cmi_estimator = GreedyCMIEstimatorPL(value_network, predictor, mask_layer,
-                                                    lr=1e-3,
-                                                    min_lr=1e-6,
-                                                    max_features=15,
-                                                    eps=0.05,
-                                                    loss_fn=nn.CrossEntropyLoss(reduction='none'),
-                                                    val_loss_fn=AUROC(task='multiclass', num_classes=2),
-                                                    eps_decay=0.2,
-                                                    eps_steps=10,
-                                                    patience=5,
-                                                    feature_costs=None,
-                                                    use_entropy=True)
+        greedy_cmi_estimator = CMIEstimator(value_network,
+                                            predictor,
+                                            mask_layer,
+                                            lr=1e-3,
+                                            min_lr=1e-6,
+                                            max_features=15,
+                                            eps=0.05,
+                                            loss_fn=nn.CrossEntropyLoss(reduction='none'),
+                                            val_loss_fn=AUROC(task='multiclass', num_classes=2),
+                                            eps_decay=0.2,
+                                            eps_steps=10,
+                                            patience=5,
+                                            feature_costs=None)
 
         trainer = Trainer(
                     accelerator='gpu',
