@@ -264,3 +264,14 @@ class ConcreteMask2d(nn.Module):
         m = self.upsample(m.reshape(-1, 1, self.width, self.width))
         out = x * m
         return out
+
+
+def get_mlp_network(d_in, d_out, hidden=128, dropout=0.3):
+    return nn.Sequential(
+        nn.Linear(d_in, hidden),
+        nn.ReLU(),
+        nn.Dropout(dropout),
+        nn.Linear(hidden, hidden),
+        nn.ReLU(),
+        nn.Dropout(dropout),
+        nn.Linear(hidden, d_out))
