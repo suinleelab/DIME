@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import numpy as np
 from torch.distributions import RelaxedOneHotCategorical, Categorical
 
 
@@ -15,16 +14,83 @@ class MaskLayer(nn.Module):
     Mask layer for tabular data.
 
     Args:
-      append:
-      mask_size:
+      mask_size: number of features.
+      append: whether to append mask to the output.
     '''
-    def __init__(self, append, mask_size=None):
+    def __init__(self, mask_size, append=True):
         super().__init__()
         self.append = append
         self.mask_size = mask_size
 
+    def forward(self, x, mask):
+        out = x * mask
+        if self.append:
+            out = torch.cat([out, mask], dim=1)
+        return out
+
+
+class MaskLayer2d(nn.Module):
+    '''
+    Mask layer for zeroing out 2d image data.
+
+    Args:
+      mask_width: width of the mask, or the number of patches.
+      patch_size: upsampling factor for the mask, or number of pixels along
+        the side of each patch.
+      append: whether to append mask to the output.
+    '''
+
+    def __init__(self, mask_width, patch_size, append=False):
+        super().__init__()
+        self.append = append
+        self.mask_width = mask_width
+        self.mask_size = mask_width ** 2
+
+        # Set up upsampling.
+        self.patch_size = patch_size
+        if patch_size == 1:
+            self.upsample = nn.Identity()
+        elif patch_size > 1:
+            self.upsample = nn.Upsample(scale_factor=patch_size)
+        else:
+            raise ValueError('patch_size should be int >= 1')
+
+    def forward(self, x, mask):
+        # Reshape if necessary.
+        if len(mask.shape) == 2:
+            mask = mask.reshape(-1, 1, self.mask_width, self.mask_width)
+        elif len(mask.shape) != 4:
+            raise ValueError(f'cannot determine how to reshape mask with shape = {mask.shape}')
+
+        # Apply mask.
+        mask = self.upsample(mask)
+        out = x * mask
+        if self.append:
+            out = torch.cat([out, mask], dim=1)
+        return out
+
+
+class MaskLayerGrouped(nn.Module):
+    '''
+    Mask layer for tabular data with feature grouping.
+
+    Args:
+      groups: matrix of feature groups, where each row is a group.
+      append: whether to append mask to the output.
+    '''
+    def __init__(self, group_matrix, append=True):
+        # Verify group matrix.
+        assert torch.all(group_matrix.sum(dim=0) == 1)
+        assert torch.all((group_matrix == 0) | (group_matrix == 1))
+
+        # Initialize.
+        super().__init__()
+        self.register_buffer('group_matrix', group_matrix.float())
+        self.append = append
+        self.mask_size = len(group_matrix)
+
     def forward(self, x, m):
-        out = x * m
+        out = x * (m @ self.group_matrix)
         if self.append:
             out = torch.cat([out, m], dim=1)
         return out
@@ -104,36 +170,21 @@ def get_confidence(pred):
     return torch.max(pred.softmax(dim=1), dim=1).values
 
 
-def normalize(data, a, b):
-    return (b - a) * ((data - np.min(data)) / (np.max(data) - np.min(data))) + a
+def ind_to_onehot(inds, n):
+    '''Convert index to one-hot encoding.'''
+    onehot = torch.zeros(len(inds), n, dtype=torch.float32, device=inds.device)
+    onehot[torch.arange(len(inds)), inds] = 1
+    return onehot
 
 
-def selection_with_lamda(cmi, feature_costs=None, lamda=None):
-    assert isinstance(cmi, torch.Tensor)
-    if lamda is None:
-        return torch.argmax(cmi, dim=1)
-    else:
-        return torch.argmax(cmi - lamda * feature_costs, dim=1)
+def make_onehot(x):
+    '''Make an approximately one-hot vector one-hot.'''
+    argmax = torch.argmax(x, dim=1)
+    onehot = torch.zeros(x.shape, dtype=x.dtype, device=x.device)
+    onehot[torch.arange(len(x)), argmax] = 1
+    return onehot
 
-
-def selection_without_lamda(cmi, feature_costs=None, lamda=None):
-    if feature_costs is not None:
-        return torch.argmax(cmi/feature_costs, dim=1)
-    return torch.argmax(cmi, dim=1)
-
-
-def selection_without_cost(cmi, feature_costs=None, lamda=None):
-    return torch.argmax(cmi, dim=1)
-
-
-def generate_pixel_based_cost(dataset):
-    cost = np.array([])
-    for data in dataset:
-        if len(cost) == 0:
-            cost = data[0]
-        else:
-            cost += data[0]
-    return normalize(cost.detach().numpy(), 0, 1)
+# TODO: starting here, these are for baseline methods.
 
 
 class ConcreteSelector(nn.Module):
@@ -150,21 +201,6 @@ class ConcreteSelector(nn.Module):
         else:
             dist = RelaxedOneHotCategorical(temp, logits=logits / self.gamma)
             return dist.rsample()
-
-
-def ind_to_onehot(inds, n):
-    '''Convert index to one-hot encoding.'''
-    onehot = torch.zeros(len(inds), n, dtype=torch.float32, device=inds.device)
-    onehot[torch.arange(len(inds)), inds] = 1
-    return onehot
-
-
-def make_onehot(x):
-    '''Make an approximately one-hot vector one-hot.'''
-    argmax = torch.argmax(x, dim=1)
-    onehot = torch.zeros(x.shape, dtype=x.dtype, device=x.device)
-    onehot[torch.arange(len(x)), argmax] = 1
-    return onehot
 
 
 class ConcreteMask(nn.Module):

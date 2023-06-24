@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 from dime.utils import get_entropy, get_confidence, ind_to_onehot
 
 
-class GreedyCMIEstimatorPL(pl.LightningModule):
+class CMIEstimator(pl.LightningModule):
     '''
     Greedy CMI estimation module.
 
