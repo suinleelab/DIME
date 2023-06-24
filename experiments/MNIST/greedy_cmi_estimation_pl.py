@@ -8,7 +8,7 @@ from torchvision.datasets import MNIST
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from dime import MaskingPretrainerPL, CMIEstimator, MaskLayer
+from dime import MaskingPretrainer, CMIEstimator, MaskLayer
 from torch.utils.data import DataLoader
 
 # Set up command line arguments.
@@ -80,7 +80,7 @@ if __name__ == '__main__':
         print('Pretraining predictor')
         print('-'*8)
 
-        pretrain = MaskingPretrainerPL(
+        pretrain = MaskingPretrainer(
             predictor,
             mask_layer,
             lr=1e-3,

@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 from dime.utils import generate_uniform_mask
 
 
-class MaskingPretrainer(pl.LightningModule):
+class MaskingPretrainerPrior(pl.LightningModule):
     '''
     Pretrain model with missing features.
 
@@ -46,12 +46,12 @@ class MaskingPretrainer(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # Setup for minibatch.
-        x, y = batch
+        x, prior, y = batch
         mask = generate_uniform_mask(len(x), self.mask_size).to(x.device)
 
         # Calculate predictions and loss.
         x_masked = self.mask_layer(x, mask)
-        pred = self.model(x_masked)
+        pred = self.model(x_masked, prior)
         return self.loss_fn(pred, y)
 
     def train_epoch_end(self, outputs):
@@ -61,12 +61,12 @@ class MaskingPretrainer(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         # Setup for minibatch.
-        x, y = batch
+        x, prior, y = batch
         mask = generate_uniform_mask(len(x), self.mask_size).to(x.device)
 
         # Calculate predictions.
         x_masked = self.mask_layer(x, mask)
-        pred = self.model(x_masked)
+        pred = self.model(x_masked, prior)
         return pred, y
 
     def validation_epoch_end(self, outputs):

@@ -1,6 +1,7 @@
 from dime.masking_pretrainer import MaskingPretrainer
-from dime.masking_pretrainer_pl import MaskingPretrainerPL
+from dime.masking_pretrainer_pl import MaskingPretrainer
 from dime.greedy_model_pl import CMIEstimator
 from dime.masking_pretrainer_prior_info import MaskingPretrainerPriorInfo
+from dime.masking_pretrainer_prior_info_pl import MaskingPretrainerPrior
 from dime.greedy_model_prior_info_pl import CMIEstimatorPrior
 from dime.utils import MaskLayer, MaskLayer2d, MaskLayerGrouped
