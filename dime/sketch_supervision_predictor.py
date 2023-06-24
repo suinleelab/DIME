@@ -19,7 +19,7 @@ class SketchSupervisionPredictor(nn.Module):
         self.trained_predictor = trained_predictor
         self.sketch_predictor = sketch_predictor
         self.mask_layer = mask_layer
-    
+
     def fit(self,
             train_dataloader,
             val_dataloader,
@@ -59,7 +59,7 @@ class SketchSupervisionPredictor(nn.Module):
         num_bad_epochs = 0
         if early_stopping_epochs is None:
             early_stopping_epochs = patience + 2
-        
+
         num_steps = 1
         best_val_loss_fn_output = 0
         global_step = 0
@@ -73,7 +73,7 @@ class SketchSupervisionPredictor(nn.Module):
             x, y = next(iter(val_dataloader.dataset))
             assert len(x.shape) == 1
             mask_size = len(x)
-        
+
         # Set up optimizer and scheduler
         opt = optim.Adam(list(sketch_predictor.parameters()), lr=lr)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -114,7 +114,7 @@ class SketchSupervisionPredictor(nn.Module):
                     else:
                         feature_costs = torch.tensor(feature_costs, device=device)
                         feature_costs = torch.tile(feature_costs, (x.shape[0], 1))
-                    
+
                 # print(f"Feature cost: {feature_costs[:, 0]}")
 
                 # Setup.
@@ -146,18 +146,18 @@ class SketchSupervisionPredictor(nn.Module):
                     pred_without_next_feature = pred_with_next_feature
 
                     loss = loss_fn(pred, y)
-                    
+
                     total_loss = torch.mean(loss)
                     (total_loss / max_features).backward()
-                    
+
                     pred_loss_total += torch.mean(loss)
-                
+
                 # Take optimizer step
                 opt.step()
                 batch_pred_loss.append(pred_loss_total / max_features)
 
             writer.add_scalar("eps", eps, global_step)
-                
+
             # Validation step
             sketch_predictor.eval()
             pred_list = []
@@ -211,9 +211,9 @@ class SketchSupervisionPredictor(nn.Module):
 
                     pred_list.append(pred.cpu())
                     y_list.append(y.cpu())
-                    
+
                     batch_pred_loss_val.append(pred_loss_total_val / max_features)
-                    
+
             val_loss_fn_output = val_loss_fn(torch.cat(y_list), torch.cat(pred_list))
 
             pred_loss_epoch_train = sum(batch_pred_loss) / len(train_dataloader)
@@ -234,7 +234,7 @@ class SketchSupervisionPredictor(nn.Module):
                            f'results/sketch_predictor_trained_{tensorboard_file_name_suffix}.pth')
 
                 value_network.to(device)
-            
+
             # Check if best model.
             if pred_loss_epoch_val == scheduler.best:
                 num_bad_epochs = 0
@@ -247,9 +247,9 @@ class SketchSupervisionPredictor(nn.Module):
                 num_bad_epochs = 0
                 num_steps += 1
                 break
-                
+
             writer.flush()
-        
+
     def evaluate(self,
                  test_dataloader,
                  performance_func,
@@ -303,7 +303,7 @@ class SketchSupervisionPredictor(nn.Module):
 
                 x = x.to(device)
                 y = y.to(device)
-                
+
                 # Create feature cost matrix on first iteration
                 if i == 0:
                     if feature_costs is None:
@@ -327,7 +327,7 @@ class SketchSupervisionPredictor(nn.Module):
 
                     pred_CMI = value_network(x_masked) * torch.tensor(get_entropy(pred.detach()), device=device).unsqueeze(1) \
                         if use_entropy else value_network(x_masked)
-                    
+
                     if iteration not in pred_cmi_dict:
                         pred_cmi_dict[iteration] = [pred_CMI.cpu()]
                     else:
@@ -365,7 +365,7 @@ class SketchSupervisionPredictor(nn.Module):
 
                         # Update mask
                         m_hard[accept_sample] = torch.max(m_hard[accept_sample], hard[accept_sample])
-                    
+
                     elif evaluation_mode == 'fixed-budget':
                         budget_allowed = kwargs['budget']
 
@@ -382,7 +382,7 @@ class SketchSupervisionPredictor(nn.Module):
 
                         # Once a sample is done, it should not be selected again
                         accept_sample = torch.bitwise_and(accept_sample, check_neg_CMI)
-                        
+
                         # Select next feature and ensure no repeats
                         pred_CMI -= 1e6 * m_hard
 
@@ -410,7 +410,7 @@ class SketchSupervisionPredictor(nn.Module):
                             pred = predictor(x_masked, x_sketch)
 
                         entropies = get_entropy(pred)
-                        
+
                         if sum(accept_sample) == 0:
                             budget_exhausted = True
                             break
@@ -437,7 +437,7 @@ class SketchSupervisionPredictor(nn.Module):
 
                         # Update mask
                         m_hard[accept_sample] = torch.max(m_hard[accept_sample], hard[accept_sample])
-                    
+
                     elif evaluation_mode == 'confidence':
                         min_confidence = kwargs['min_confidence']
                         x_masked = mask_layer(x, m_hard)
@@ -448,7 +448,7 @@ class SketchSupervisionPredictor(nn.Module):
 
                         confidences = get_confidence(pred)
                         # print(confidences)
-                        
+
                         if sum(accept_sample) == 0 or torch.max(torch.sum(m_hard, dim=1)) == mask_size:
                             budget_exhausted = True
                             break
@@ -474,12 +474,12 @@ class SketchSupervisionPredictor(nn.Module):
 
                         # Update mask
                         m_hard[accept_sample] = torch.max(m_hard[accept_sample], hard[accept_sample])
-                    
+
                     if iteration not in masks_dict:
                         masks_dict[iteration] = [m_hard.cpu()]
                     else:
                         masks_dict[iteration].append(m_hard.cpu())
-                    
+
                     iteration += 1
 
                 # Add to final mask list

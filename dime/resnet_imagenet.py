@@ -24,7 +24,7 @@ model_name = {
 
 
 def conv3x3(in_planes, out_planes, stride=1):
-    """3x3 convolution with padding"""
+    '''3x3 convolution with padding'''
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
 
 
@@ -160,16 +160,16 @@ class ResNet(nn.Module):
 
 
 def resnet18(pretrained=False, **kwargs):
-    """Constructs a ResNet-18 model.
+    '''Constructs a ResNet-18 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
+    '''
     model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
     if pretrained:
         model.load_state_dict(torch.load(os.path.join(models_dir, model_name['resnet18'])))
     return model
-    
+
 
 def ResNet18Backbone(model):
     # Remove avgpool and fc
@@ -180,7 +180,7 @@ def ResNet18Backbone(model):
 class UpsamplingBlock(nn.Module):
     '''Custom residual block for performing upsampling.'''
     expansion = 1
-    
+
     def __init__(self, in_planes, planes):
         super().__init__()
         self.conv1 = nn.ConvTranspose2d(
@@ -196,13 +196,13 @@ class UpsamplingBlock(nn.Module):
                         stride=2, padding=0, bias=False),
             nn.BatchNorm2d(self.expansion*planes)
         )
-            
+
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
         out += self.shortcut(x)
         out = F.relu(out)
-        # print("Upsample block out shape:", out.shape)
+        # print('Upsample block out shape:', out.shape)
 
         return out
 
@@ -210,7 +210,7 @@ class UpsamplingBlock(nn.Module):
 class UpsamplingBottleneckBlock(nn.Module):
     '''Custom residual block for performing upsampling.'''
     expansion = 4
-    
+
     def __init__(self, in_planes, planes):
         super().__init__()
         self.conv1 = nn.ConvTranspose2d(
@@ -219,7 +219,7 @@ class UpsamplingBottleneckBlock(nn.Module):
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
                                stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, 
+        self.conv3 = nn.Conv2d(planes,
                                planes*self.expansion, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(planes*self.expansion)
 
@@ -229,17 +229,17 @@ class UpsamplingBottleneckBlock(nn.Module):
                         stride=2, padding=0, bias=False),
             nn.BatchNorm2d(planes*self.expansion)
         )
-            
+
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = F.relu(self.bn2(self.conv2(out)))
         out = self.bn3(self.conv3(out))
         out += self.shortcut(x)
         out = F.relu(out)
-        # print("Upsample block out shape:", out.shape)
+        # print('Upsample block out shape:', out.shape)
 
         return out
-    
+
 
 def make_layer(block, in_planes, planes, num_blocks, stride, expansion):
     strides = [stride] + [1]*(num_blocks-1)
@@ -254,7 +254,7 @@ def make_layer(block, in_planes, planes, num_blocks, stride, expansion):
                               stride=stride, bias=False),
                     nn.BatchNorm2d(planes * block.expansion),
                 )
-                
+
             layers.append(block(in_planes, planes, stride, downsample))
         else:
             if expansion == 1:
@@ -276,7 +276,7 @@ class Predictor(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.fc = nn.Linear(256 * expansion, num_classes)
         self.backbone = backbone
-    
+
     def forward(self, x):
         x = self.backbone(x)
         x = self.relu(self.bn(self.conv(x)))
@@ -304,7 +304,7 @@ class ValueNetwork(nn.Module):
         self.softplus = nn.Softplus()
         self.sigmoid = nn.Sigmoid()
         self.use_entropy = use_entropy
-    
+
     def forward(self, x):
         x = self.backbone(x)
         x = self.block_layer(x)
@@ -319,11 +319,11 @@ class ValueNetwork(nn.Module):
 
 
 def resnet34(pretrained=False, **kwargs):
-    """Constructs a ResNet-34 model.
+    '''Constructs a ResNet-34 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
+    '''
     model = ResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
     if pretrained:
         model.load_state_dict(torch.load(os.path.join(models_dir, model_name['resnet34'])))
@@ -331,11 +331,11 @@ def resnet34(pretrained=False, **kwargs):
 
 
 def resnet50(pretrained=False, **kwargs):
-    """Constructs a ResNet-50 model.
+    '''Constructs a ResNet-50 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
+    '''
     model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
     if pretrained:
         model.load_state_dict(torch.load(os.path.join(models_dir, model_name['resnet50'])))
@@ -343,11 +343,11 @@ def resnet50(pretrained=False, **kwargs):
 
 
 def resnet101(pretrained=False, **kwargs):
-    """Constructs a ResNet-101 model.
+    '''Constructs a ResNet-101 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
+    '''
     model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
     if pretrained:
         model.load_state_dict(torch.load(os.path.join(models_dir, model_name['resnet101'])))
@@ -355,11 +355,11 @@ def resnet101(pretrained=False, **kwargs):
 
 
 def resnet152(pretrained=False, **kwargs):
-    """Constructs a ResNet-152 model.
+    '''Constructs a ResNet-152 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
+    '''
     model = ResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
     if pretrained:
         model.load_state_dict(torch.load(os.path.join(models_dir, model_name['resnet152'])))
