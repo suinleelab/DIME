@@ -88,8 +88,7 @@ if __name__ == '__main__':
             nn.Linear(hidden, hidden),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden, num_groups),
-            nn.Sigmoid())
+            nn.Linear(hidden, num_groups))
 
         use_feature_costs = False
         if args.use_feature_costs:
