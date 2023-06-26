@@ -7,7 +7,7 @@ setuptools.setup(
     author_email='sgadgil@cs.washington.edu',
     description='CMI Estimation',
     long_description='''
-        Dynamic feature selection by estimation conditional mutual information.
+        Dynamic feature selection by estimating conditional mutual information.
     ''',
     long_description_content_type='text/markdown',
     url='',

@@ -7,7 +7,7 @@ This paper presents DIME (**di**scriminative **m**utual information **e**stimati
 After cloning the repo, run ``cd DIME`` followed by ``pip install .`` to install the package and related dependencies into the current Python environment.
 
 ## Usage
-The ```experiments\``` directory contains subdirectories for each of the datasets used. In each of the subdirectories, the ```greedy_cmi_estimation_pl.py``` file can be run to jointly train the value network and the predictor network as described in the paper. Each subdirectory also contains a ```*.ipynb``` jupyter notebook to evaluate the trained networks using different stopping criteria.
+The ```experiments/``` directory contains subdirectories for each of the datasets used. In each of the subdirectories, the ```greedy_cmi_estimation_pl.py``` file can be run to jointly train the value network and the predictor network as described in the paper. Each subdirectory also contains a ```*.ipynb``` jupyter notebook to evaluate the trained networks using different stopping criteria.
 
 ## Datasets
 Following are the publically available datasets we used to evaluate DIME:
