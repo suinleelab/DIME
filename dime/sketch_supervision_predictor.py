@@ -1,7 +1,7 @@
 import torch
 import torch.optim as optim
 import torch.nn as nn
-from dime.utils import get_entropy, get_confidence, selection_without_lamda
+from dime.utils import get_entropy, get_confidence
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
@@ -88,7 +88,6 @@ class SketchSupervisionPredictor(nn.Module):
             param.requires_grad = False
 
         for epoch in range(nepochs):
-            batch_value_network_loss = []
             batch_pred_loss = []
 
             value_network.eval()
@@ -254,7 +253,6 @@ class SketchSupervisionPredictor(nn.Module):
                  test_dataloader,
                  performance_func,
                  feature_costs=None,
-                 selection_func=selection_without_lamda,
                  evaluation_mode="lamda-penalty",
                  use_entropy=True,
                  semi_supervised=False,
@@ -360,7 +358,7 @@ class SketchSupervisionPredictor(nn.Module):
                         # Select next feature and ensure no repeats
                         pred_CMI -= 1e6 * m_hard
                         # print(pred_CMI)
-                        best_feature_index = selection_func(pred_CMI, feature_costs, lamda)
+                        best_feature_index = torch.argmax(pred_CMI / feature_costs, dim=1)
                         hard = ind_to_onehot(best_feature_index, mask_size)
 
                         # Update mask
@@ -386,7 +384,7 @@ class SketchSupervisionPredictor(nn.Module):
                         # Select next feature and ensure no repeats
                         pred_CMI -= 1e6 * m_hard
 
-                        best_feature_index = selection_func(pred_CMI, feature_costs, None)
+                        best_feature_index = torch.argmax(pred_CMI / feature_costs, dim=1)
 
                         # print(f"best feature index: {best_feature_index}")
 
@@ -432,7 +430,7 @@ class SketchSupervisionPredictor(nn.Module):
                         accept_sample = torch.bitwise_and(accept_sample,
                                                           torch.tensor(min_entropy_not_reached, device=device))
 
-                        best_feature_index = selection_func(pred_CMI, feature_costs, None)
+                        best_feature_index = torch.argmax(pred_CMI / feature_costs, dim=1)
                         hard = ind_to_onehot(best_feature_index, mask_size)
 
                         # Update mask
@@ -465,7 +463,7 @@ class SketchSupervisionPredictor(nn.Module):
                         # Select next feature and ensure no repeats
                         pred_CMI -= 1e6 * m_hard
 
-                        best_feature_index = selection_func(pred_CMI, feature_costs, None)
+                        best_feature_index = torch.argmax(pred_CMI / feature_costs, dim=1)
                         hard = ind_to_onehot(best_feature_index, mask_size)
 
                         # Select samples for which minimum confidence has not been reached yet

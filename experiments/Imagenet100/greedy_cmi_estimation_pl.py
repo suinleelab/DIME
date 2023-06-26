@@ -156,8 +156,8 @@ if __name__ == '__main__':
             )
     
     # Jointly train predictor and value networks
-    greedy_cmi_estimator = CMIEstimator(value_network, 
-                                        predictor, 
+    greedy_cmi_estimator = CMIEstimator(value_network,
+                                        predictor,
                                         mask_layer,
                                         lr=lr,
                                         min_lr=min_lr,

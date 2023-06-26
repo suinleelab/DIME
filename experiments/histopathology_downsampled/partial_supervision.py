@@ -14,7 +14,7 @@ import pandas as pd
 from dime.data_utils import HistopathologyDownsampledEdgeDataset
 from dime.utils import MaskLayer2d
 from dime.masking_pretrainer import MaskingPretrainer
-from dime.greedy_model_pl import GreedyCMIEstimatorPL
+from dime import CMIEstimator
 from dime.sketch_supervision_predictor import SketchSupervisionPredictor
 from dime.vit import PredictorViT, ValueNetworkViT, PredictorViTPrior
 import timm

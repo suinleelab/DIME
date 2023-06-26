@@ -27,26 +27,6 @@ class ValueNetworkViT(nn.Module):
         return x
 
 
-# TODO looks like this should be consolidated with the one above
-class ValueNetworkViT(nn.Module):
-    def __init__(self, backbone, mask_width=7, dropout=0.3, use_entropy=True):
-        super().__init__()
-        self.backbone = backbone
-        self.hidden = nn.Linear(backbone.embed_dim, 1)
-        self.use_entropy = use_entropy
-
-    def forward(self, x):
-        x = self.backbone.forward_features(x)[:, 1:]
-        x = self.hidden(x).squeeze()
-        # TODO after deleting this, I think this class becomes identical to the one above?
-        if self.use_entropy:
-            x = x.sigmoid()
-        else:
-            x = nn.functional.softplus(x)
-
-        return x
-
-
 class PredictorViTPrior(nn.Module):
     def __init__(self, backbone1, backbone2, num_classes=10):
         super().__init__()
