@@ -104,7 +104,7 @@ class CMIEstimator(pl.LightningModule):
             self.mode = 'penalized'
         elif confidence is not None:
             self.confidence = confidence
-            self.mode = confidence
+            self.mode = 'confidence'
 
     def on_fit_start(self):
         self.num_epsilon_steps = 0
@@ -235,7 +235,7 @@ class CMIEstimator(pl.LightningModule):
         self.log('Perf Val/Mean', val_loss_mean, prog_bar=True, logger=False)
         self.log('Loss Val/Final', pred_loss_final, prog_bar=True, logger=False)
         self.log('Perf Val/Final', val_loss_final, prog_bar=True, logger=False)
-        self.log('Eps Value', self.eps, prog_bar=True, logger=False)
+        self.log('Eps Value', self.eps, prog_bar=False, logger=False)
 
         # Log in tensorboard.
         self.logger.experiment.add_scalar('Loss Val/Mean', pred_loss_mean, self.current_epoch)
@@ -304,6 +304,8 @@ class CMIEstimator(pl.LightningModule):
             else:
                 pred_cmi = self.value_network(x_masked)
 
+            check_pos_pred_cmi = pred_cmi.max(dim=1).values >= 0
+
             # Determine best feature.
             pred_cmi -= 1e6 * mask
             best_feature_index = torch.argmax(pred_cmi / self.feature_costs, dim=1)
@@ -325,7 +327,7 @@ class CMIEstimator(pl.LightningModule):
                 accept_sample = confidences < self.confidence
 
             # Ensure positive CMI.
-            accept_sample = torch.bitwise_and(accept_sample, pred_cmi.max(dim=1).values > 0)
+            accept_sample = torch.bitwise_and(accept_sample, check_pos_pred_cmi)
 
             # Stop if no samples were accepted.
             if sum(accept_sample).item() == 0:

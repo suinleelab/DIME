@@ -46,10 +46,7 @@ if __name__ == '__main__':
     else:
         min_lr = 1e-8
 
-    if mask_type == 'gaussian':
-        mask_layer = MaskLayerGaussian(append=False, mask_width=mask_width, patch_size=image_size/mask_width, sigma=1)
-    else:
-        mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
+    mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         
     device = torch.device('cuda', args.gpu)
 

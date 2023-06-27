@@ -31,7 +31,7 @@ if __name__ == '__main__':
     # cols_to_drop = [str(x) for x in range(len(fib_feature_names)) if str(x) not in ['98', '104', '107', '108', '109', '110']]
     cols_to_drop = []
     if cols_to_drop is not None:
-        rosmap_feature_names = [item for item in rosmap_feature_names if str(rosmap_feature_names.index(item)) 
+        rosmap_feature_names = [item for item in rosmap_feature_names if str(rosmap_feature_names.index(item))
                                 not in cols_to_drop]
         
     # Load dataset
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     test_dataset = ROSMAPDataset('./data', split='test', cols_to_drop=cols_to_drop, use_apoe=args.use_apoe)
 
     if not args.use_apoe:
-        rosmap_feature_names = [f for f in rosmap_feature_names if f not in ['apoe4_1copy','apoe4_2copies']]
+        rosmap_feature_names = [f for f in rosmap_feature_names if f not in ['apoe4_1copy', 'apoe4_2copies']]
 
     if args.use_feature_costs:
         df = pd.read_csv("./data/rosmap_feature_costs.csv", header=None)
