@@ -12,12 +12,12 @@ def ind_to_onehot(inds, n):
     return onehot
 
 
-class SketchSupervisionPredictor(nn.Module):
-    def __init__(self, value_network, trained_predictor, sketch_predictor, mask_layer):
+class PriorPredictor(nn.Module):
+    def __init__(self, value_network, trained_predictor, prior_predictor, mask_layer):
         super().__init__()
         self.value_network = value_network
         self.trained_predictor = trained_predictor
-        self.sketch_predictor = sketch_predictor
+        self.prior_predictor = prior_predictor
         self.mask_layer = mask_layer
 
     def fit(self,
@@ -44,7 +44,7 @@ class SketchSupervisionPredictor(nn.Module):
             use_entropy=True):
         value_network = self.value_network
         trained_predictor = self.trained_predictor
-        sketch_predictor = self.sketch_predictor
+        prior_predictor = self.prior_predictor
         mask_layer = self.mask_layer
 
         writer = SummaryWriter(filename_suffix=tensorboard_file_name_suffix)
@@ -75,12 +75,12 @@ class SketchSupervisionPredictor(nn.Module):
             mask_size = len(x)
 
         # Set up optimizer and scheduler
-        opt = optim.Adam(list(sketch_predictor.parameters()), lr=lr)
+        opt = optim.Adam(list(prior_predictor.parameters()), lr=lr)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             opt, mode=val_loss_mode, factor=factor, patience=patience,
             min_lr=min_lr, verbose=verbose)
 
-        # Freeze the value network backbone trained without using the sketch
+        # Freeze the value network backbone trained without using the prior
         for param in value_network.parameters():
             param.requires_grad = False
 
@@ -92,19 +92,19 @@ class SketchSupervisionPredictor(nn.Module):
 
             value_network.eval()
             trained_predictor.eval()
-            sketch_predictor.train()
+            prior_predictor.train()
 
             # Train step
             for i, batch in enumerate(tqdm(train_dataloader)):
                 if len(batch) == 2:
                     x, y = batch
                 else:
-                    x, x_sketch, y = batch
-                    x_sketch = x_sketch.to(device)
+                    x, x_prior, y = batch
+                    x_prior = x_prior.to(device)
 
                 x = x.to(device)
                 y = y.to(device)
-                sketch_predictor.zero_grad()
+                prior_predictor.zero_grad()
 
                 # Create feature cost matrix on first iteration
                 if epoch == 0 and i == 0 and num_steps == 1:
@@ -140,7 +140,7 @@ class SketchSupervisionPredictor(nn.Module):
 
                     # Predictor loss including the next feature
                     x_masked = mask_layer(x, m_hard)
-                    pred = sketch_predictor(x_masked, x_sketch)
+                    pred = prior_predictor(x_masked, x_prior)
                     pred_with_next_feature = trained_predictor(x_masked)
                     pred_without_next_feature = pred_with_next_feature
 
@@ -158,7 +158,7 @@ class SketchSupervisionPredictor(nn.Module):
             writer.add_scalar("eps", eps, global_step)
 
             # Validation step
-            sketch_predictor.eval()
+            prior_predictor.eval()
             pred_list = []
             y_list = []
             batch_pred_loss_val = []
@@ -169,8 +169,8 @@ class SketchSupervisionPredictor(nn.Module):
                     if len(batch) == 2:
                         x, y = batch
                     else:
-                        x, x_sketch, y = batch
-                        x_sketch = x_sketch.to(device)
+                        x, x_prior, y = batch
+                        x_prior = x_prior.to(device)
 
                     x = x.to(device)
                     y = y.to(device)
@@ -201,7 +201,7 @@ class SketchSupervisionPredictor(nn.Module):
 
                         # Make prediction
                         x_masked = mask_layer(x, m_hard)
-                        pred = sketch_predictor(x_masked, x_sketch)
+                        pred = prior_predictor(x_masked, x_prior)
 
                         pred_val_loss = loss_fn(pred, y)
 
@@ -229,8 +229,8 @@ class SketchSupervisionPredictor(nn.Module):
 
             if val_loss_fn_output > best_val_loss_fn_output:
                 best_val_loss_fn_output = val_loss_fn_output
-                torch.save(sketch_predictor.state_dict(), 
-                           f'results/sketch_predictor_trained_{tensorboard_file_name_suffix}.pth')
+                torch.save(prior_predictor.state_dict(), 
+                           f'results/prior_predictor_trained_{tensorboard_file_name_suffix}.pth')
 
                 value_network.to(device)
 
@@ -263,7 +263,7 @@ class SketchSupervisionPredictor(nn.Module):
         # setup
         value_network = self.value_network
         predictor = self.trained_predictor
-        sketch_predictor = self.sketch_predictor
+        prior_predictor = self.prior_predictor
 
         mask_layer = self.mask_layer
         loss = nn.CrossEntropyLoss()
@@ -296,8 +296,8 @@ class SketchSupervisionPredictor(nn.Module):
                 if len(batch) == 2:
                     x, y = batch
                 else:
-                    x, x_sketch, y = batch
-                    x_sketch = x_sketch.to(device)
+                    x, x_prior, y = batch
+                    x_prior = x_prior.to(device)
 
                 x = x.to(device)
                 y = y.to(device)
@@ -405,7 +405,7 @@ class SketchSupervisionPredictor(nn.Module):
                         if not semi_supervised:
                             pred = predictor(x_masked)
                         else:
-                            pred = predictor(x_masked, x_sketch)
+                            pred = predictor(x_masked, x_prior)
 
                         entropies = get_entropy(pred)
 
@@ -442,7 +442,7 @@ class SketchSupervisionPredictor(nn.Module):
                         if not semi_supervised:
                             pred = predictor(x_masked)
                         else:
-                            pred = predictor(x_masked, x_sketch)
+                            pred = predictor(x_masked, x_prior)
 
                         confidences = get_confidence(pred)
                         # print(confidences)
@@ -488,7 +488,7 @@ class SketchSupervisionPredictor(nn.Module):
                 if not semi_supervised:
                     pred = predictor(x_masked)
                 else:
-                    pred = sketch_predictor(x_masked, x_sketch)
+                    pred = prior_predictor(x_masked, x_prior)
 
                 pred_list.append(pred.cpu())
                 y_list.append(y.cpu())

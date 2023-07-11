@@ -75,7 +75,8 @@ if __name__ == '__main__':
         transforms.Normalize(*norm_constants)
     ])
 
-    data_dir = '/projects/<labname>/<username>/hist_data/MHIST/'
+    # data_dir = '/projects/<labname>/<username>/hist_data/MHIST/'
+    data_dir = '/projects/leelab2/sgadgil/hist_data/MHIST/'
 
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')
@@ -111,20 +112,20 @@ if __name__ == '__main__':
     predictor = PredictorViTPrior(backbone1, backbone2, num_classes=2)
     value_network = ValueNetworkViTPrior(backbone1, backbone2)
 
-    pretrain = MaskingPretrainerPrior(
-            predictor,
-            mask_layer,
-            lr=1e-5,
-            loss_fn=nn.CrossEntropyLoss(),
-            val_loss_fn=auc_metric)
+    # pretrain = MaskingPretrainerPrior(
+    #         predictor,
+    #         mask_layer,
+    #         lr=1e-5,
+    #         loss_fn=nn.CrossEntropyLoss(),
+    #         val_loss_fn=auc_metric)
     
-    trainer = Trainer(
-        accelerator='gpu',
-        devices=[args.gpu],
-        max_epochs=200,
-        num_sanity_val_steps=0
-    )
-    trainer.fit(pretrain, train_dataloader, val_dataloader)
+    # trainer = Trainer(
+    #     accelerator='gpu',
+    #     devices=[args.gpu],
+    #     max_epochs=200,
+    #     num_sanity_val_steps=0
+    # )
+    # trainer.fit(pretrain, train_dataloader, val_dataloader)
 
     run_description = f"max_features_60_{pretrained_model_name}_lr_{str(lr)}_prior_info_individual_backbone_use_entropy"
     logger = TensorBoardLogger("logs", name=f"{run_description}")
