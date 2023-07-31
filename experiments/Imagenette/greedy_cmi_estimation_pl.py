@@ -45,9 +45,12 @@ parser.add_argument('--pretrained_model_name', type=str,
                     default='vit_small_patch16_224',
                     choices=vit_model_options+resnet_model_options,
                     help="Name of the pretrained model to use")
+parser.add_argument('--trial', type=int,
+                    default=1,
+                    help="Trial Number")
 
 if __name__ == '__main__':
-    acc_metric = Accuracy(task='multiclass', num_classes=100)
+    acc_metric = Accuracy(task='multiclass', num_classes=10)
 
     # Parse args
     args = parser.parse_args()
@@ -69,7 +72,7 @@ if __name__ == '__main__':
     mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         
     device = torch.device('cuda', args.gpu)
-    dataset_path = "/homes/gws/<username>/.fastai/data/imagenette2-320"
+    dataset_path = "/homes/gws/<user_name>/.fastai/data/imagenette2-320"
     if not os.path.exists(dataset_path):
         dataset_path = str(untar_data(URLs.IMAGENETTE_320))
         
@@ -123,7 +126,7 @@ if __name__ == '__main__':
     if network_type == 'vit':
         backbone = timm.create_model(pretrained_model_name, pretrained=True)
         predictor = PredictorViT(backbone)
-        value_network = ValueNetworkViT(backbone, mask_width=mask_width, use_entropy=True)
+        value_network = ValueNetworkViT(backbone)
     else:
         # Set up networks.
         backbone, expansion = ResNet18Backbone(eval(pretrained_model_name + '(pretrained=True)'))
@@ -149,11 +152,11 @@ if __name__ == '__main__':
         )
     trainer.fit(pretrain, train_dataloader, val_dataloader)
 
-    run_description = f"max_features_50_{pretrained_model_name}_lr_1e-5_use_entropy_True_{mask_type}_mask_width_{mask_width}_save_best_perf"
+    run_description = f"max_features_50_{pretrained_model_name}_lr_1e-5_use_entropy_True_{mask_type}_mask_width_{mask_width}_trial_{args.trial}"
     logger = TensorBoardLogger("logs", name=f"{run_description}")
     checkpoint_callback = best_hard_callback = ModelCheckpoint(
                 save_top_k=1,
-                monitor='Perf Val/Mean',
+                monitor='Perf Val/Final',
                 mode='max',
                 filename='best_val_perfomance_model',
                 verbose=False

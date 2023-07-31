@@ -44,6 +44,10 @@ parser.add_argument('--pretrained_model_name', type=str,
                     default='vit_small_patch16_224',
                     choices=vit_model_options+resnet_model_options,
                     help="Name of the pretrained model to use")
+parser.add_argument('--trial', type=int,
+                    default=1,
+                    help="Trial Number")
+
 
 if __name__ == '__main__':
     auc_metric = AUROC(task='multiclass', num_classes=2)
@@ -84,7 +88,7 @@ if __name__ == '__main__':
         transforms.Normalize(*norm_constants)
     ])
 
-    data_dir = '/projects/<labname>/<username>/hist_data/MHIST/'
+    data_dir = '/projects/<lab_name>/<user_name>/hist_data/MHIST/'
 
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')
@@ -115,7 +119,7 @@ if __name__ == '__main__':
     if network_type == 'vit':
         backbone = timm.create_model(pretrained_model_name, pretrained=True)
         predictor = PredictorViT(backbone, num_classes=2)
-        value_network = ValueNetworkViT(backbone, mask_width=mask_width)
+        value_network = ValueNetworkViT(backbone)
     else:
         # Set up networks.
         backbone, expansion = ResNet18Backbone(eval(pretrained_model_name + '(pretrained=True)'))
@@ -141,7 +145,7 @@ if __name__ == '__main__':
     )
     trainer.fit(pretrain, train_dataloader, val_dataloader)
 
-    run_description = f"max_features_60_{pretrained_model_name}_lr_{str(lr)}_individual_backbone_use_entropy_may_7"
+    run_description = f"max_features_60_{pretrained_model_name}_lr_{str(lr)}_individual_backbone_use_entropy_trial_{args.trial}"
     logger = TensorBoardLogger("logs", name=f"{run_description}")
     checkpoint_callback = best_hard_callback = ModelCheckpoint(
                 save_top_k=1,
@@ -152,8 +156,8 @@ if __name__ == '__main__':
             )
 
     # Jointly train predictor and value networks
-    greedy_cmi_estimator = CMIEstimator(value_network, 
-                                        predictor, 
+    greedy_cmi_estimator = CMIEstimator(value_network,
+                                        predictor,
                                         mask_layer,
                                         lr=lr,
                                         min_lr=min_lr,

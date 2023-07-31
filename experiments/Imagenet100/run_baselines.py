@@ -6,8 +6,8 @@ import numpy as np
 import torch.nn as nn
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
-from dime.data_utils import MaskLayer2d
-from dime.vit import PredictorViT, SelectorViT
+from dime.utils import MaskLayer2d
+from dime.vit import PredictorViT, ValueNetworkViT
 from dime import MaskingPretrainer
 from dime.utils import StaticMaskLayer2d, ConcreteMask2d
 from torchvision import transforms
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         
     device = torch.device('cuda', args.gpu)
-    dataset_path = "/projects/<labname>/<username>/ImageNet100"
+    dataset_path = "/projects/<lab_name>/<user_name>/ImageNet100"
 
     norm_constants = ((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
 
@@ -234,7 +234,7 @@ if __name__ == '__main__':
         mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         backbone = timm.create_model(pretrained_model_name, pretrained=True)
         predictor = PredictorViT(backbone, num_classes=num_classes)
-        selector = SelectorViT(backbone)
+        selector = ValueNetworkViT(backbone)
 
         # Pretrain predictor
         pretrain = MaskingPretrainer(predictor, mask_layer).to(device)

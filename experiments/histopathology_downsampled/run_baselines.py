@@ -4,21 +4,26 @@ import argparse
 import numpy as np
 import torch.nn as nn
 from torchmetrics import AUROC
-from torch.utils.data import DataLoader
-from dime.data_utils import MaskLayer2d, HistopathologyDownsampledDataset
-from dime.vit import PredictorViT, SelectorViT
+from torchvision.datasets import ImageFolder
+from torch.utils.data import DataLoader, random_split
+from fastai.vision.all import untar_data, URLs
+from dime.utils import MaskLayer2d
+from dime.data_utils import HistopathologyDownsampledDataset
+from dime.vit import PredictorViT, ValueNetworkViT
 from dime.masking_pretrainer import MaskingPretrainer
 from dime.utils import StaticMaskLayer2d, ConcreteMask2d
+import sys
+sys.path.append('../')
+from experiments.baselines import cae, hardattention, dfs
+sys.path.append('../../')
 from baseline_models.base_model import BaseModel
 from baseline_models.hard_attention_model import HardAttention
 from torchvision import transforms
 from torchmetrics import Accuracy
 import timm
 import pandas as pd
-import sys
-sys.path.append('../')
-from baselines import cae, hardattention, dfs
 
+#from baselines import EDDI, PVAE
 vit_model_options = ['vit_small_patch16_224', 'vit_tiny_patch16_224', 'vit_base_patch16_224']
 resnet_model_options = ['resnet18', 'resnet34', 'resnet50', 'resnet101']
 
@@ -27,20 +32,20 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--method', type=str, default='cae',
                     choices=['cae', 'hard_attn', 'dfs'])
-parser.add_argument('--mask_width', type=int,
-                    default=14,
-                    choices=[7, 14],
-                    help="Mask width to use in the mask layer")
-parser.add_argument('--pretrained_model_name', type=str,
-                    default='vit_small_patch16_224',
-                    choices=vit_model_options+resnet_model_options,
-                    help="Name of the pretrained model to use")
-parser.add_argument('--pretrain_checkpoint', type=str,
-                    default=None,
-                    help="Name of the pretrained checkpoint to use")
-parser.add_argument('--training_phase', type=str,
-                    default='first',
-                    help="Name of the trianing phase")
+parser.add_argument('--mask_width', type=int, 
+                                default=14, 
+                                choices=[7, 14], 
+                                help="Mask width to use in the mask layer")
+parser.add_argument('--pretrained_model_name', type=str, 
+                                default='vit_small_patch16_224', 
+                                choices=vit_model_options+resnet_model_options, 
+                                help="Name of the pretrained model to use")
+parser.add_argument('--pretrain_checkpoint', type=str, 
+                                default=None,
+                                help="Name of the pretrained checkpoint to use")
+parser.add_argument('--training_phase', type=str, 
+                                default='first',
+                                help="Name of the trianing phase")
 
 if __name__ == '__main__':
     # Parse args
@@ -90,12 +95,11 @@ if __name__ == '__main__':
             transforms.Normalize(*norm_constants),
         ])
 
-    data_dir = '/projects/<labname>/<username>/hist_data/mhist/'
+    data_dir = '/projects/<lab_name>/<user_name>/hist_data/MHIST/'
 
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')
-    train_dataset = HistopathologyDownsampledDataset(data_dir + 'images/', df.loc[df['Partition'] == 'train'],
-                                                     transforms_train)
+    train_dataset = HistopathologyDownsampledDataset(data_dir + 'images/', df.loc[df['Partition'] == 'train'], transforms_train)
     test_dataset = HistopathologyDownsampledDataset(data_dir + 'images/', df.loc[df['Partition'] == 'test'], transforms_test)
     test_dataset_len = len(test_dataset)
 
@@ -112,27 +116,28 @@ if __name__ == '__main__':
     # Prepare dataloaders.
     mbsize = 16
     train_dataloader = DataLoader(train_dataset, batch_size=mbsize, shuffle=True, pin_memory=True,
-                                  drop_last=True, num_workers=4)
-    val_dataloader = DataLoader(val_dataset, batch_size=mbsize, pin_memory=True, num_workers=4)
-    test_dataloader = DataLoader(test_dataset, batch_size=mbsize, pin_memory=True, num_workers=4)
+                            drop_last=True, num_workers=4)
+    val_dataloader = DataLoader(val_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
+    test_dataloader = DataLoader(test_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
 
     d_in = image_size * image_size
 
     num_features = [2, 10, 20, 30, 40, 50, 60]
     mask_width = 14
     patch_size = image_size / mask_width
- 
+    
+
     results_dict = {
         'acc': {},
         'features': {}
     }
     if args.method == 'cae':
         num_restarts = 3
-      
+        
         for num in num_features:
             # Train model with differentiable feature selection.
             backbone = timm.create_model(pretrained_model_name, pretrained=True)
-            model = PredictorViT(backbone, num_classes=num_classes)
+            model =  PredictorViT(backbone, num_classes=num_classes)
             # model = get_mlp_network(d_in, d_out)
             selector_layer = ConcreteMask2d(mask_width, patch_size, num)
             diff_selector = cae.DifferentiableSelector(model, selector_layer).to(device)
@@ -163,7 +168,7 @@ if __name__ == '__main__':
             for _ in range(num_restarts):
                 # Train model.
                 backbone = timm.create_model('vit_small_patch16_224', pretrained=True)
-                predictor = PredictorViT(backbone, num_classes=num_classes)
+                predictor =  PredictorViT(backbone, num_classes=num_classes)
                 model = nn.Sequential(mask_layer, predictor)
                 basemodel = BaseModel(model).to(device)
                 basemodel.fit(
@@ -181,15 +186,15 @@ if __name__ == '__main__':
                     best_loss = val_loss
 
             # Evaluate using best model.
-            acc = best_model.evaluate(test_dataloader, auc_metric)
+            acc = best_model.evaluate(test_dataloader, auc)
             results_dict['acc'][num] = acc
             results_dict['features'][num] = selected_features
             print(f'Num = {num}, Acc = {100*acc:.2f}')
-    
+        
         print(results_dict)
-        with open(f'results/mhist_{args.method}.pkl', 'wb') as f:
+        with open(f'results/imagenette_{args.method}.pkl', 'wb') as f:
             pickle.dump(results_dict, f)
-
+    
     elif args.method == 'hard_attn':
         nf = 256
         nz = 512
@@ -202,32 +207,30 @@ if __name__ == '__main__':
         training_phase = args.training_phase
 
         # overwrite ccebal for first two training phases
-        if training_phase == 'first':
-            ccebal = 1
-        elif training_phase == 'second':
-            ccebal = 0
-        elif training_phase == 'third':
-            ccebal = 16
+        if training_phase=='first':
+            ccebal=1
+        elif training_phase=='second':
+            ccebal=0
+        elif training_phase=='third':
+            ccebal=16
 
-        model = HardAttention(T, nsfL, nf, nh, nz, classes, gz, imsz, ccebal, training_phase, args.pretrain_checkpoint
-                              ).to(device)
-        hardattention.HardAttentionTrainer(model,
-                                           T,
-                                           device,
-                                           train_dataloader,
-                                           val_dataloader,
-                                           test_dataloader,
-                                           nepochs=500,
-                                           lr=0.0001,
-                                           tensorboard_file_name_suffix="hard_attn_logs",
-                                           path="hard_attn_results", 
-                                           training_phase=training_phase)
+        model = HardAttention(T, nsfL, nf, nh, nz, classes, gz, imsz, ccebal, training_phase, args.pretrain_checkpoint).to(device)
+        hardattention.HardAttentionTrainer(model, 
+                                            T, device, 
+                                            train_dataloader, 
+                                            val_dataloader,
+                                            test_dataloader, 
+                                            nepochs=500, 
+                                            lr=0.0001, 
+                                            tensorboard_file_name_suffix="hard_attn_logs", 
+                                            path="hard_attn_results", 
+                                            training_phase=training_phase)
     elif args.method == 'dfs':
         max_features = 60
         mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         backbone = timm.create_model(pretrained_model_name, pretrained=True)
-        predictor = PredictorViT(backbone)
-        selector = SelectorViT(backbone)
+        predictor =  PredictorViT(backbone)
+        selector = ValueNetworkViT(backbone)
 
         # Pretrain predictor
         pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
@@ -238,7 +241,7 @@ if __name__ == '__main__':
             lr=1e-5,
             nepochs=100,
             loss_fn=nn.CrossEntropyLoss(),
-            val_loss_fn=auc_metric,
+            val_loss_fn=auc,
             val_loss_mode='max',
             patience=5,
             verbose=True)
@@ -257,10 +260,10 @@ if __name__ == '__main__':
 
         # Evaluate.
         for num in num_features:
-            acc = gdfs.evaluate(test_dataloader, num, auc_metric)
+            acc = gdfs.evaluate(test_dataloader, num, auc)
             results_dict['acc'][num] = acc
             print(f'Num = {num}, Acc = {100*acc:.2f}')
-   
+        
         print(results_dict)
         with open(f'results/mhist_{args.method}.pkl', 'wb') as f:
             pickle.dump(results_dict, f)

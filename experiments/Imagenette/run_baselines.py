@@ -7,8 +7,8 @@ from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
 import os
 from fastai.vision.all import untar_data, URLs
-from dime.data_utils import MaskLayer2d
-from dime.vit import PredictorViT, SelectorViT
+from dime.utils import MaskLayer2d
+from dime.vit import PredictorViT, ValueNetworkViT
 from dime import MaskingPretrainer
 from dime.utils import StaticMaskLayer2d, ConcreteMask2d
 from torchvision import transforms
@@ -58,7 +58,7 @@ if __name__ == '__main__':
     mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         
     device = torch.device('cuda', args.gpu)
-    dataset_path = "/homes/gws/<username>/.fastai/data/imagenette2-320"
+    dataset_path = "/homes/gws/<user_name>/.fastai/data/imagenette2-320"
     if not os.path.exists(dataset_path):
         dataset_path = str(untar_data(URLs.IMAGENETTE_320))
 
@@ -112,7 +112,6 @@ if __name__ == '__main__':
     test_dataset = ImageFolder(dataset_path+"/val", transforms_test)
 
     print(f'Train samples = {len(train_dataset)}, val samples = {len(val_dataset)}, test samples = {len(test_dataset)}')
-
 
     # Prepare dataloaders.
     mbsize = 64
@@ -232,7 +231,7 @@ if __name__ == '__main__':
         mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         backbone = timm.create_model(pretrained_model_name, pretrained=True)
         predictor = PredictorViT(backbone)
-        selector = SelectorViT(backbone)
+        selector = ValueNetworkViT(backbone)
 
         # Pretrain predictor
         pretrain = MaskingPretrainer(predictor, mask_layer).to(device)

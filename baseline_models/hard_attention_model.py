@@ -9,11 +9,12 @@ import numpy as np
 # sys.path.append('../')
 from baseline_models.model_utils import VAE, GlimpseLoc, simpleRNN
 # sys.path.append('../../')
-from dime.utils import auc
+from torchmetrics import AUROC
 
 class HardAttention(nn.Module):
     def __init__(self, T, nsfL, nf, nh, nz, classes, gz, imsz, ccebal, training_phase, pretrain_checkpoint=None, return_auc=False):
         super(HardAttention, self).__init__()
+        self.auc = AUROC(task='multiclass', num_classes=classes)
 
         self.T = T
         self.nf = nf
@@ -113,7 +114,7 @@ class HardAttention(nn.Module):
             pastp = torch.softmax(label, -1)
             
             if self.return_auc:
-                auroc.append(auc(y.cpu(), label))
+                auroc.append(self.auc(label, y))
                 
             label = torch.argmax(pastp,-1)
             acc.append((label==y).float().mean())
@@ -194,7 +195,7 @@ class HardAttention(nn.Module):
             pastp = torch.softmax(label, 1)
             acc.append((torch.argmax(pastp,1)==y).float().mean())
             if self.return_auc:
-                auroc.append(auc(y.cpu(), label))
+                auroc.append(self.auc(label, y))
 
         loss = lossV/self.nz + self.ccebal*lossC
 
@@ -221,7 +222,7 @@ class HardAttention(nn.Module):
             label = self.classifier(hidden)[:,:,0,0]
             loss = loss + F.cross_entropy(label, y, reduction='sum')
             if self.return_auc: 
-                auroc.append(auc(label, y.cpu()))
+                auroc.append(self.auc(label, y))
             label = torch.argmax(label,-1)
             acc.append((label==y).float().mean())
         

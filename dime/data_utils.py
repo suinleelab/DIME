@@ -70,6 +70,8 @@ class DenseDatasetSelected(Dataset):
         self.data_dir = os.path.expanduser(data_dir)
         data = pd.read_csv(self.data_dir)
 
+        print(data.columns)
+
         if cols_to_drop is not None:
             data = data.drop(columns=cols_to_drop)
 
