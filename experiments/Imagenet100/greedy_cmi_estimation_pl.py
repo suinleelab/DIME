@@ -43,7 +43,9 @@ parser.add_argument('--pretrained_model_name', type=str,
                     default='vit_small_patch16_224',
                     choices=vit_model_options+resnet_model_options,
                     help="Name of the pretrained model to use")
-
+parser.add_argument('--trial', type=int,
+                    default=1,
+                    help="Trial Number")
 if __name__ == '__main__':
     acc_metric = Accuracy(task='multiclass', num_classes=100)
     # Parse args
@@ -119,7 +121,7 @@ if __name__ == '__main__':
     if network_type == 'vit':
         backbone = timm.create_model(pretrained_model_name, pretrained=True)
         predictor = PredictorViT(backbone, num_classes=100)
-        value_network = ValueNetworkViT(backbone, mask_width=mask_width)
+        value_network = ValueNetworkViT(backbone)
     else:
         # Set up networks.
         backbone, expansion = ResNet18Backbone(eval(pretrained_model_name + '(pretrained=True)'))
@@ -145,7 +147,7 @@ if __name__ == '__main__':
         )
     trainer.fit(pretrain, train_dataloader, val_dataloader)
 
-    run_description = f"max_features_50_{pretrained_model_name}_with_token_individual_uniform_feature_cost_{mask_type}"
+    run_description = f"max_features_50_{pretrained_model_name}_with_token_individual_trial_{trial}"
     logger = TensorBoardLogger("logs", name=f"{run_description}")
     checkpoint_callback = best_hard_callback = ModelCheckpoint(
                 save_top_k=1,

@@ -4,6 +4,7 @@ import numpy as np
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import os
 
 
 def HardAttentionTrainer(model, T, device, train_loader, val_loader, test_loader, nepochs, lr,
@@ -65,7 +66,9 @@ def HardAttentionTrainer(model, T, device, train_loader, val_loader, test_loader
         # with open(PATH+'/print.txt','a+') as f:
         print('final train loss {:.2f} acc {:.2f} epoch {:.2f} \n'.format(train_loss, train_acc, epoch))
         print('final val loss {:.2f} acc {:.2f} epoch {:.2f} \n'.format(val_loss, val_acc, epoch))
-            
+        
+        os.makedirs(path, exist_ok=True)  # succeeds even if directory exists.
+
         torch.save([model.state_dict(), optimizerG.state_dict()],
                     path+'/weights_f_training_phase_{0}_imsz_224_lr_0.0001_detach_ccebal_1_auc.pth'.format(training_phase))
         

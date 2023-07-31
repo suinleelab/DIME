@@ -14,6 +14,7 @@ from dime.utils import StaticMaskLayer2d, ConcreteMask2d
 from torchvision import transforms
 from torchmetrics import Accuracy
 import timm
+from pytorch_lightning import Trainer
 import sys
 sys.path.append('../')
 from baselines import cae, hardattention, dfs
@@ -43,6 +44,8 @@ parser.add_argument('--pretrain_checkpoint', type=str,
 parser.add_argument('--training_phase', type=str,
                     default='first',
                     help="Name of the trianing phase")
+parser.add_argument('--num_trials', type=int, default=2)
+
 
 if __name__ == '__main__':
     # Parse args
@@ -126,149 +129,152 @@ if __name__ == '__main__':
     num_features = list(range(1, 15, 1))
     mask_width = 14
     patch_size = image_size / mask_width
-    
-    results_dict = {
-        'acc': {},
-        'features': {}
-    }
-        
-    if args.method == 'cae':
-        num_restarts = 1
-        for num in num_features:
-            # Train model with differentiable feature selection.
-            backbone = timm.create_model(pretrained_model_name, pretrained=True)
-            model = PredictorViT(backbone)
-            # model = get_mlp_network(d_in, d_out)
-            selector_layer = ConcreteMask2d(mask_width, patch_size, num)
-            diff_selector = cae.DifferentiableSelector(model, selector_layer).to(device)
-            diff_selector.fit(
-                train_dataloader,
-                val_dataloader,
-                lr=1e-5,
-                nepochs=250,
-                loss_fn=nn.CrossEntropyLoss(),
-                patience=5,
-                verbose=True)
-
-            # Extract top features.
-            logits = selector_layer.logits.cpu().data.numpy()
-            selected_features = np.sort(logits.argmax(axis=1))
-            if len(np.unique(selected_features)) != num:
-                print(f'{len(np.unique(selected_features))} selected instead of {num}, appending extras')
-                num_extras = num - len(np.unique(selected_features))
-                remaining_features = np.setdiff1d(np.arange(d_in), selected_features)
-                selected_features = np.sort(np.concatenate([np.unique(selected_features), remaining_features[:num_extras]]))
-
-            # Prepare module to mask all but top features
-            inds = torch.tensor(np.isin(np.arange(mask_width ** 2), selected_features) * 1, device=device)
-            mask = inds.reshape(mask_width, mask_width)
-            mask_layer = StaticMaskLayer2d(mask, patch_size)
-
-            best_loss = np.inf
-            for _ in range(num_restarts):
-                # Train model.
-                backbone = timm.create_model('vit_small_patch16_224', pretrained=True)
-                predictor = PredictorViT(backbone)
-                model = nn.Sequential(mask_layer, predictor)
-                basemodel = BaseModel(model).to(device)
-                basemodel.fit(
+   
+    for trial in range(args.num_trials):
+        results_dict = {
+            'acc': {},
+            'features': {}
+        }
+         
+        if args.method == 'cae':
+            num_restarts = 1
+            for num in num_features:
+                # Train model with differentiable feature selection.
+                backbone = timm.create_model(pretrained_model_name, pretrained=True)
+                model = PredictorViT(backbone)
+                # model = get_mlp_network(d_in, d_out)
+                selector_layer = ConcreteMask2d(mask_width, patch_size, num)
+                diff_selector = cae.DifferentiableSelector(model, selector_layer).to(device)
+                diff_selector.fit(
                     train_dataloader,
                     val_dataloader,
                     lr=1e-5,
                     nepochs=250,
                     loss_fn=nn.CrossEntropyLoss(),
+                    patience=5,
                     verbose=True)
 
-                # Check if best.
-                val_loss = basemodel.evaluate(val_dataloader, nn.CrossEntropyLoss())
-                if val_loss < best_loss:
-                    best_model = basemodel
-                    best_loss = val_loss
+                # Extract top features.
+                logits = selector_layer.logits.cpu().data.numpy()
+                selected_features = np.sort(logits.argmax(axis=1))
+                if len(np.unique(selected_features)) != num:
+                    print(f'{len(np.unique(selected_features))} selected instead of {num}, appending extras')
+                    num_extras = num - len(np.unique(selected_features))
+                    remaining_features = np.setdiff1d(np.arange(d_in), selected_features)
+                    selected_features = np.sort(np.concatenate([np.unique(selected_features), remaining_features[:num_extras]]))
 
-            # Evaluate using best model.
-            acc = best_model.evaluate(test_dataloader, acc_metric)
-            results_dict['acc'][num] = acc
-            results_dict['features'][num] = selected_features
-            print(f'Num = {num}, Acc = {100*acc:.2f}')
+                # Prepare module to mask all but top features
+                inds = torch.tensor(np.isin(np.arange(mask_width ** 2), selected_features) * 1, device=device)
+                mask = inds.reshape(mask_width, mask_width)
+                mask_layer = StaticMaskLayer2d(mask, patch_size)
+
+                best_loss = np.inf
+                for _ in range(num_restarts):
+                    # Train model.
+                    backbone = timm.create_model('vit_small_patch16_224', pretrained=True)
+                    predictor = PredictorViT(backbone)
+                    model = nn.Sequential(mask_layer, predictor)
+                    basemodel = BaseModel(model).to(device)
+                    basemodel.fit(
+                        train_dataloader,
+                        val_dataloader,
+                        lr=1e-5,
+                        nepochs=250,
+                        loss_fn=nn.CrossEntropyLoss(),
+                        verbose=True)
+
+                    # Check if best.
+                    val_loss = basemodel.evaluate(val_dataloader, nn.CrossEntropyLoss())
+                    if val_loss < best_loss:
+                        best_model = basemodel
+                        best_loss = val_loss
+
+                # Evaluate using best model.
+                acc = best_model.evaluate(test_dataloader, acc_metric)
+                results_dict['acc'][num] = acc
+                results_dict['features'][num] = selected_features
+                print(f'Num = {num}, Acc = {100*acc:.2f}')
+            
+            print(results_dict)
+            with open(f'results/imagenette_{args.method}_trial_{trial}.pkl', 'wb') as f:
+                pickle.dump(results_dict, f)
         
-        print(results_dict)
-        with open(f'results/imagenette_{args.method}.pkl', 'wb') as f:
-            pickle.dump(results_dict, f)
-    
-    elif args.method == 'hard_attn':
-        nf = 256
-        nz = 512
-        nh = 1024
-        classes = 10
-        imsz = 224
-        gz = 16
-        nsfL = 6
-        T = 15
-        training_phase = args.training_phase
+        elif args.method == 'hard_attn':
+            nf = 256
+            nz = 512
+            nh = 1024
+            classes = 10
+            imsz = 224
+            gz = 16
+            nsfL = 6
+            T = 15
+            training_phase = args.training_phase
 
-        # overwrite ccebal for first two training phases
-        if training_phase == 'first':
-            ccebal = 1
-        elif training_phase == 'second':
-            ccebal = 0
-        elif training_phase == 'third':
-            ccebal = 16
+            # overwrite ccebal for first two training phases
+            if training_phase == 'first':
+                ccebal = 1
+            elif training_phase == 'second':
+                ccebal = 0
+            elif training_phase == 'third':
+                ccebal = 16
 
-        model = HardAttention(T, nsfL, nf, nh, nz, classes, gz, imsz, ccebal, training_phase, args.pretrain_checkpoint).to(device)
-        # model.load_state_dict(torch.load('hard_attn_results/weights_f_training_phase_second_imsz_224_test.pth')[0])
-        hardattention.HardAttentionTrainer(model,
-                                           T, device,
-                                           train_dataloader,
-                                           val_dataloader,
-                                           test_dataloader,
-                                           nepochs=100,
-                                           lr=0.001,
-                                           tensorboard_file_name_suffix=f"with_val_loss_phase_{training_phase}_ccebal_16",
-                                           path="hard_attn_results", 
-                                           training_phase=training_phase)
-    elif args.method == 'dfs':
-        max_features = 40
-        mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
-        backbone = timm.create_model(pretrained_model_name, pretrained=True)
-        predictor = PredictorViT(backbone)
-        selector = ValueNetworkViT(backbone)
+            model = HardAttention(T, nsfL, nf, nh, nz, classes, gz, imsz, ccebal, training_phase, args.pretrain_checkpoint).to(device)
+            # model.load_state_dict(torch.load('hard_attn_results/weights_f_training_phase_second_imsz_224_test.pth')[0])
+            hardattention.HardAttentionTrainer(model,
+                                               T,
+                                               device,
+                                               train_dataloader,
+                                               val_dataloader,
+                                               test_dataloader,
+                                               nepochs=100,
+                                               lr=0.001,
+                                               tensorboard_file_name_suffix=f"with_val_loss_phase_{training_phase}_ccebal_16",
+                                               path=f"hard_attn_results_trial_{trial}", 
+                                               training_phase=training_phase)
+        elif args.method == 'dfs':
+            max_features = 40
+            mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
+            backbone = timm.create_model(pretrained_model_name, pretrained=True)
+            predictor = PredictorViT(backbone)
+            selector = ValueNetworkViT(backbone)
 
-        # Pretrain predictor
-        pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
-        pretrain.fit(
-            train_dataset,
-            val_dataset,
-            mbsize,
-            lr=1e-5,
-            nepochs=5,
-            loss_fn=nn.CrossEntropyLoss(),
-            val_loss_fn=acc_metric,
-            val_loss_mode='max',
-            patience=5,
-            verbose=True)
+            pretrain = MaskingPretrainer(
+                                        predictor,
+                                        mask_layer,
+                                        lr=1e-5,
+                                        loss_fn=nn.CrossEntropyLoss(),
+                                        val_loss_fn=acc_metric)
+ 
+            trainer = Trainer(
+                    accelerator='gpu',
+                    devices=[args.gpu],
+                    max_epochs=200,
+                    num_sanity_val_steps=0
+                )
+            trainer.fit(pretrain, train_dataloader, val_dataloader)
 
-        # Train selector and predictor jointly.
-        gdfs = dfs.GreedyDynamicSelection(selector, predictor, mask_layer).to(device)
-        gdfs.fit(
-            train_dataloader,
-            val_dataloader,
-            lr=1e-5,
-            nepochs=5,
-            max_features=max_features,
-            loss_fn=nn.CrossEntropyLoss(),
-            patience=5,
-            verbose=True)
+            # Train selector and predictor jointly.
+            gdfs = dfs.GreedyDynamicSelection(selector, predictor, mask_layer).to(device)
+            gdfs.fit(
+                train_dataloader,
+                val_dataloader,
+                lr=1e-5,
+                nepochs=5,
+                max_features=max_features,
+                loss_fn=nn.CrossEntropyLoss(),
+                patience=5,
+                verbose=True)
 
-        # Save model
-        gdfs.cpu()
-        torch.save(gdfs, f'results/imagenette_{args.method}.pt')
+            # Save model
+            gdfs.cpu()
+            torch.save(gdfs, f'results/imagenette_{args.method}_trial_{trial}.pt')
 
-        # Evaluate.
-        for num in num_features:
-            acc = gdfs.evaluate(test_dataloader, num, acc_metric)
-            results_dict['acc'][num] = acc
-            print(f'Num = {num}, Acc = {100*acc:.2f}')
-        
-        print(results_dict)
-        with open(f'results/imagenette_{args.method}.pkl', 'wb') as f:
-            pickle.dump(results_dict, f)
+            # Evaluate.
+            for num in num_features:
+                acc = gdfs.evaluate(test_dataloader, num, acc_metric)
+                results_dict['acc'][num] = acc
+                print(f'Num = {num}, Acc = {100*acc:.2f}')
+            
+            print(results_dict)
+            with open(f'results/imagenette_{args.method}_trial_{trial}.pkl', 'wb') as f:
+                pickle.dump(results_dict, f)
