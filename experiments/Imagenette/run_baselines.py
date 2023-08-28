@@ -21,6 +21,7 @@ from baselines import cae, hardattention, dfs
 sys.path.append('../../')
 from baseline_models.base_model import BaseModel
 from baseline_models.hard_attention_model import HardAttention
+import time
 
 vit_model_options = ['vit_small_patch16_224', 'vit_tiny_patch16_224', 'vit_base_patch16_224']
 resnet_model_options = ['resnet18', 'resnet34', 'resnet50', 'resnet101']
@@ -117,7 +118,7 @@ if __name__ == '__main__':
     print(f'Train samples = {len(train_dataset)}, val samples = {len(val_dataset)}, test samples = {len(test_dataset)}')
 
     # Prepare dataloaders.
-    mbsize = 64
+    mbsize = 2
     train_dataloader = DataLoader(train_dataset, batch_size=mbsize, shuffle=True, pin_memory=True,
                                   drop_last=True, num_workers=4)
     val_dataloader = DataLoader(val_dataset, batch_size=mbsize, pin_memory=True, num_workers=4)
@@ -130,7 +131,7 @@ if __name__ == '__main__':
     mask_width = 14
     patch_size = image_size / mask_width
    
-    for trial in range(args.num_trials):
+    for trial in [1]:
         results_dict = {
             'acc': {},
             'features': {}
@@ -200,6 +201,7 @@ if __name__ == '__main__':
                 pickle.dump(results_dict, f)
         
         elif args.method == 'hard_attn':
+            start_time = time.time()
             nf = 256
             nz = 512
             nh = 1024
@@ -231,7 +233,15 @@ if __name__ == '__main__':
                                                tensorboard_file_name_suffix=f"with_val_loss_phase_{training_phase}_ccebal_16",
                                                path=f"hard_attn_results_trial_{trial}", 
                                                training_phase=training_phase)
+            training_time = time.time() - start_time
+
+            print(f"Training time {args.method}= {training_time}")
+
+            with open(f"training_time_{args.method}.txt", 'a') as f:
+                f.write(f"Training time {args.method}= {training_time}\n")
+
         elif args.method == 'dfs':
+            start_time = time.time()
             max_features = 40
             mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
             backbone = timm.create_model(pretrained_model_name, pretrained=True)
@@ -269,6 +279,13 @@ if __name__ == '__main__':
             gdfs.cpu()
             torch.save(gdfs, f'results/imagenette_{args.method}_trial_{trial}.pt')
 
+            training_time = time.time() - start_time
+
+            print(f"Training time {args.method}= {training_time}")
+
+            with open(f"training_time_{args.method}.txt", 'a') as f:
+                f.write(f"Training time {args.method}= {training_time}\n")
+                
             # Evaluate.
             for num in num_features:
                 acc = gdfs.evaluate(test_dataloader, num, acc_metric)

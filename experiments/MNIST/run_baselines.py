@@ -4,12 +4,13 @@ import argparse
 import numpy as np
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from dime.data_utils import get_xy, get_mlp_network
 from dime import MaskingPretrainer
-from dime.utils import StaticMaskLayer1d, MaskLayer, ConcreteMask, get_confidence
+from dime.utils import StaticMaskLayer1d, MaskLayer, ConcreteMask, get_confidence, get_mlp_network
+from dime.data_utils import get_xy
 from torchvision import transforms
 from torchmetrics import Accuracy
 from torchvision.datasets import MNIST
+from pytorch_lightning import Trainer
 import torch.optim as optim
 from tqdm import tqdm
 import sys
@@ -17,6 +18,7 @@ sys.path.append('../')
 from baselines import eddi, pvae, iterative, dfs, cae
 sys.path.append('../../')
 from baseline_models.base_model import BaseModel
+import time
 
 # Set up command line arguments
 parser = argparse.ArgumentParser()
@@ -129,6 +131,7 @@ if __name__ == '__main__':
             print(results_dict)
 
         if args.method == 'eddi':
+            start_time = time.time()
             # Train PVAE.
             mask_layer = MaskLayer(append=True, mask_size=d_in)
 
@@ -164,6 +167,12 @@ if __name__ == '__main__':
             # Set up EDDI feature selection object.
             eddi_selector = eddi.EDDI(pv, model, mask_layer).to(device)
             
+            training_time = time.time() - start_time
+            print(f"Training time {args.method}= {training_time}")
+
+            with open(f"training_time_{args.method}.txt", 'a') as f:
+                f.write(f"Training time {args.method}= {training_time}\n")
+                
             # Evaluate.
             metrics_dict, cost_dict = eddi_selector.evaluate_multiple(test_dataloader, num_features, acc_metric, verbose=False)
             for num in num_features:
@@ -172,24 +181,40 @@ if __name__ == '__main__':
                 print(f'Num = {num}, Acc = {100*acc:.2f}')
             
             print(results_dict)
+
         
         if args.method == 'dfs':
+            start_time = time.time()
             # Prepare networks.
             predictor = get_mlp_network(d_in * 2, d_out)
             selector = get_mlp_network(d_in * 2, d_in)
 
             # Pretrain predictor
-            mask_layer = MaskLayer(append=True)
-            pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
-            pretrain.fit(
-                train_dataset,
-                val_dataset,
-                mbsize,
-                lr=1e-3,
-                nepochs=100,
-                loss_fn=nn.CrossEntropyLoss(),
-                patience=5,
-                verbose=True)
+            mask_layer = MaskLayer(append=True, mask_size=d_in)
+            # pretrain = MaskingPretrainer(predictor, mask_layer).to(device)
+            # pretrain.fit(
+            #     train_dataset,
+            #     val_dataset,
+            #     mbsize,
+            #     lr=1e-3,
+            #     nepochs=100,
+            #     loss_fn=nn.CrossEntropyLoss(),
+            #     patience=5,
+            #     verbose=True)
+
+            pretrain = MaskingPretrainer(
+                        predictor,
+                        mask_layer,
+                        lr=1e-3,
+                        loss_fn=nn.CrossEntropyLoss(),
+                        val_loss_fn=acc_metric)
+            trainer = Trainer(
+                accelerator='gpu',
+                devices=[args.gpu],
+                max_epochs=200,
+                num_sanity_val_steps=0
+            )
+            trainer.fit(pretrain, train_dataloader, val_dataloader)
 
             # Train selector and predictor jointly.
             gdfs = dfs.GreedyDynamicSelection(selector, predictor, mask_layer).to(device)
@@ -202,6 +227,12 @@ if __name__ == '__main__':
                 loss_fn=nn.CrossEntropyLoss(),
                 patience=5,
                 verbose=True)
+            
+            training_time = time.time() - start_time
+            print(f"Training time {args.method}= {training_time}")
+
+            with open(f"training_time_{args.method}.txt", 'a') as f:
+                f.write(f"Training time {args.method}= {training_time}\n")
 
             # Evaluate.
             for num in num_features:

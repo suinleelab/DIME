@@ -45,7 +45,7 @@ class HardAttention(nn.Module):
             self.sample = self.forward
         else:
             if training_phase=='second':
-                self.load_state_dict(torch.load(pretrain_checkpoint, map_location=torch.device('cpu'))[0])
+                self.load_state_dict(torch.load(pretrain_checkpoint, map_location=torch.device('gp'))[0])
                 self.ccebal=0
                 for p in self.parameters():
                     p.requires_grad = False

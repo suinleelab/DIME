@@ -97,7 +97,7 @@ if __name__ == '__main__':
             transforms.Normalize(*norm_constants),
         ])
 
-    data_dir = '/projects/<lab_name>/<user_name>/hist_data/MHIST/'
+    data_dir = '/projects/leelab2/sgadgil/hist_data/MHIST/'
 
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')
@@ -116,7 +116,7 @@ if __name__ == '__main__':
     print(f'Train samples = {len(train_dataset)}, val samples = {len(val_dataset)}, test samples = {len(test_dataset)}')
 
     # Prepare dataloaders.
-    mbsize = 16
+    mbsize = 4
     train_dataloader = DataLoader(train_dataset, batch_size=mbsize, shuffle=True, pin_memory=True,
                             drop_last=True, num_workers=4)
     val_dataloader = DataLoader(val_dataset, batch_size=mbsize, pin_memory=True, drop_last=True, num_workers=4)
@@ -128,7 +128,7 @@ if __name__ == '__main__':
     mask_width = 14
     patch_size = image_size / mask_width
 
-    for trial in range(args.num_trials):
+    for trial in [2]:
         results_dict = {
             'acc': {},
             'features': {}
@@ -255,7 +255,7 @@ if __name__ == '__main__':
                 train_dataloader,
                 val_dataloader,
                 lr=1e-5,
-                nepochs=100,
+                nepochs=5,
                 max_features=max_features,
                 loss_fn=nn.CrossEntropyLoss(),
                 patience=5,
@@ -263,7 +263,7 @@ if __name__ == '__main__':
 
             # Evaluate.
             for num in num_features:
-                acc = gdfs.evaluate(test_dataloader, num, auc)
+                acc = gdfs.evaluate(test_dataloader, num, auc_metric)
                 results_dict['acc'][num] = acc
                 print(f'Num = {num}, Acc = {100*acc:.2f}')
             

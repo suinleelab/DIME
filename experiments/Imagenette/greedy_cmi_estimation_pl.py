@@ -19,6 +19,7 @@ from dime import CMIEstimator, MaskingPretrainer
 from dime.vit import PredictorViT, ValueNetworkViT
 from dime.resnet_imagenet import Predictor, ValueNetwork, ResNet18Backbone
 import timm
+import time
 
 vit_model_options = ['vit_small_patch16_224', 'vit_tiny_patch16_224']
 resnet_model_options = ['resnet18']
@@ -72,7 +73,7 @@ if __name__ == '__main__':
     mask_layer = MaskLayer2d(append=False, mask_width=mask_width, patch_size=image_size/mask_width)
         
     device = torch.device('cuda', args.gpu)
-    dataset_path = "/homes/gws/<user_name>/.fastai/data/imagenette2-320"
+    dataset_path = "/homes/gws/<username>/.fastai/data/imagenette2-320"
     if not os.path.exists(dataset_path):
         dataset_path = str(untar_data(URLs.IMAGENETTE_320))
         
@@ -137,6 +138,8 @@ if __name__ == '__main__':
         
         value_network = ValueNetwork(backbone, expansion, block_layer_stride=block_layer_stride)
 
+    starting_time = time.time()
+
     pretrain = MaskingPretrainer(
             predictor,
             mask_layer,
@@ -147,7 +150,7 @@ if __name__ == '__main__':
     trainer = Trainer(
             accelerator='gpu',
             devices=[args.gpu],
-            max_epochs=200,
+            max_epochs=50,
             num_sanity_val_steps=0
         )
     trainer.fit(pretrain, train_dataloader, val_dataloader)
@@ -188,3 +191,9 @@ if __name__ == '__main__':
             )
 
     trainer.fit(greedy_cmi_estimator, train_dataloader, val_dataloader)
+
+    training_time = time.time() - start_time
+    print("Training time", training_time)
+
+    with open("training_time.txt", 'a') as f:
+        f.write(f"Training time = {training_time}\n")

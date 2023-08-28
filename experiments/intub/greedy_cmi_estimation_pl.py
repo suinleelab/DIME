@@ -13,6 +13,7 @@ from dime import MaskingPretrainer, CMIEstimator
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
+import time
 
 # Set up command line arguments
 parser = argparse.ArgumentParser()
@@ -69,7 +70,8 @@ if __name__ == '__main__':
     hidden = 128
     dropout = 0.3
 
-    for trial in range(args.num_trials):
+    for trial in [6]:
+        start_time = time.time()
         # Predictor
         predictor = nn.Sequential(
             nn.Linear(d_in + num_groups, hidden),
@@ -128,16 +130,18 @@ if __name__ == '__main__':
             feature_cost_df = pd.read_csv("data/feature_list_intub-nw.csv")
             feature_costs = [feature_cost_df[feature_cost_df['Feature Name'] == feature]['Cost (Hours)'].item() for feature
                              in list(feature_groups_dict.keys())]
+            print(feature_costs)
+            feature_costs = np.array(feature_costs)
 
         # Jointly train value network and predictor
         print("Training CMI estimator")
         print("-"*8)
-        run_description = f"max_features_40_with_decay_rate_0.2_use_entropy_feature_cost_{use_feature_costs}_trial_{trial}"
+        run_description = f"max_features_40_with_decay_rate_0.2_use_entropy_false_feature_cost_{use_feature_costs}_trial_{trial}"
         logger = TensorBoardLogger("logs", name=f"{run_description}")
 
         checkpoint_callback = ModelCheckpoint(
                     save_top_k=1,
-                    monitor='Perf Val/Mean',
+                    monitor='Perf Val/Final',
                     mode='max',
                     filename='best_val_perfomance_model',
                     verbose=False
@@ -157,13 +161,14 @@ if __name__ == '__main__':
                                             lr=1e-3,
                                             min_lr=1e-6,
                                             max_features=40,
-                                            eps=0.0,
+                                            eps=0.1,
                                             loss_fn=nn.CrossEntropyLoss(reduction='none'),
                                             val_loss_fn=AUROC(task='multiclass', num_classes=2),
                                             eps_decay=0.2,
                                             eps_steps=10,
                                             patience=5,
-                                            feature_costs=feature_costs)
+                                            feature_costs=feature_costs,
+                                            cmi_scaling='positive')
 
         trainer = Trainer(accelerator='gpu',
                           devices=[args.gpu],
@@ -175,3 +180,5 @@ if __name__ == '__main__':
                           log_every_n_steps=10)
 
         trainer.fit(greedy_cmi_estimator, train_dataloader, val_dataloader)
+
+        print("Training time=", time.time() - start_time)

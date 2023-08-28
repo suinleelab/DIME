@@ -10,6 +10,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from dime import MaskingPretrainer, CMIEstimator, MaskLayer
 from torch.utils.data import DataLoader
+import time
 
 # Set up command line arguments.
 parser = argparse.ArgumentParser()
@@ -53,6 +54,7 @@ if __name__ == '__main__':
     dropout = 0.3
 
     for trial in range(num_trials):
+        start_time = time.time()
         # For predicting response variable.
         predictor = nn.Sequential(
             nn.Linear(d_in * 2, hidden),
@@ -72,6 +74,10 @@ if __name__ == '__main__':
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden, d_in))
+
+        # Tie weights
+        value_network[0] = predictor[0]
+        value_network[3] = predictor[3]
 
         # For masking unobserved features.
         mask_layer = MaskLayer(mask_size=d_in, append=True)
@@ -103,22 +109,32 @@ if __name__ == '__main__':
             predictor,
             mask_layer,
             lr=1e-3,
+            min_lr=1e-6,
+            eps_decay=0.2,
             max_features=50,
             eps=0.05,
             loss_fn=nn.CrossEntropyLoss(reduction='none'),
             val_loss_fn=acc_metric,
-            eps_steps=2,
+            eps_steps=10,
             patience=5
         )
         run_description = f'max_features_50_eps_0.05_with_decay_rate_0.2_save_best_loss_with_entropy_fix_trial_{trial}'
         logger = TensorBoardLogger('logs', name=f'{run_description}')
         checkpoint_callback_loss = ModelCheckpoint(
             save_top_k=1,
-            monitor='Loss Val/Mean',
+            monitor='Loss Val/Final',
             mode='min',
             filename='best_val_loss_model',
             verbose=False
         )
+        checkpoint_callback_perf = ModelCheckpoint(
+            save_top_k=1,
+            monitor='Perf Val/Final',
+            mode='min',
+            filename='best_val_perf_model',
+            verbose=False
+        )
+
         trainer = Trainer(
             accelerator='gpu',
             devices=[args.gpu],
@@ -126,6 +142,12 @@ if __name__ == '__main__':
             precision=16,
             logger=logger,
             num_sanity_val_steps=0,
-            callbacks=[checkpoint_callback_loss]
+            callbacks=[checkpoint_callback_perf]
         )
         trainer.fit(greedy_cmi_estimator, train_dataloader, val_dataloader)
+        
+        training_time = time.time() - start_time
+        print("Training time", training_time)
+
+        with open("training_time.txt", 'a') as f:
+            f.write(f"Training time = {training_time}\n")

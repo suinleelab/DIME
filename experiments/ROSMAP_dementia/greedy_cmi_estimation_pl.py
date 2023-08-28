@@ -3,7 +3,7 @@ import feature_groups
 import argparse
 import numpy as np
 import torch.nn as nn
-from torchmetrics import AUROC
+from torchmetrics import AUROC, Accuracy
 from torch.utils.data import DataLoader
 import pandas as pd
 from dime.data_utils import ROSMAPDataset, get_group_matrix
@@ -13,6 +13,7 @@ from dime import CMIEstimator
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
+import time
 
 # Set up command line arguments
 parser = argparse.ArgumentParser()
@@ -52,6 +53,9 @@ if __name__ == '__main__':
         else:
             feature_costs = df[~df[0].isin(['apoe4_1copy', 'apoe4_2copies'])][1].tolist()
 
+        print(feature_costs)
+        feature_costs = np.array(feature_costs)
+
     # Get features and groups
     feature_groups_dict, feature_groups_mask = get_group_matrix(rosmap_feature_names, rosmap_feature_groups)
     num_groups = len(feature_groups_mask) 
@@ -71,6 +75,7 @@ if __name__ == '__main__':
     print(f"args.use_apoe={args.use_apoe}")
 
     for trial_num in range(num_trials):
+        start_time = time.time()
         # Predictor
         predictor = nn.Sequential(
             nn.Linear(d_in + num_groups, hidden),
@@ -122,7 +127,7 @@ if __name__ == '__main__':
         # Train CMI estimator
         print("Training CMI estimator")
         print("-"*8)
-        run_description = f"max_feature_15_apoe_{args.use_apoe}_ep_0.05_decay_0.2_{args.use_feature_costs}_trial_{trial_num}"
+        run_description = f"max_feature_15_apoe_{args.use_apoe}_entropy_false_ep_0.05_decay_0.2_{args.use_feature_costs}_trial_{trial_num}"
         logger = TensorBoardLogger("logs", name=f"{run_description}")
 
         checkpoint_callback_perf = ModelCheckpoint(
@@ -149,11 +154,12 @@ if __name__ == '__main__':
                                             max_features=15,
                                             eps=0.05,
                                             loss_fn=nn.CrossEntropyLoss(reduction='none'),
-                                            val_loss_fn=AUROC(task='multiclass', num_classes=2),
+                                            val_loss_fn=Accuracy(task='multiclass', num_classes=2),
                                             eps_decay=0.2,
                                             eps_steps=10,
                                             patience=5,
-                                            feature_costs=None)
+                                            feature_costs=None,
+                                            cmi_scaling='positive')
 
         trainer = Trainer(
                     accelerator='gpu',
@@ -167,3 +173,5 @@ if __name__ == '__main__':
                 )
 
         trainer.fit(greedy_cmi_estimator, train_dataloader, val_dataloader)
+
+        print("Training time=", time.time() - start_time)
