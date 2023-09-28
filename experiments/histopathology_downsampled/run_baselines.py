@@ -97,7 +97,7 @@ if __name__ == '__main__':
             transforms.Normalize(*norm_constants),
         ])
 
-    data_dir = '/projects/leelab2/sgadgil/hist_data/MHIST/'
+    data_dir = '/projects/<lab_name>/<user_name>/hist_data/MHIST/'
 
     # Get train and test datasets
     df = pd.read_csv(data_dir + 'annotations.csv')

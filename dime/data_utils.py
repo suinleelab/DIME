@@ -8,36 +8,6 @@ from torchvision import transforms
 from torch.utils.data import Dataset, Subset
 import pickle
 
-
-class UKBDataset(Dataset):
-    def __init__(self, outcome, split='train'):
-        super().__init__()
-
-        outcomes_displayname = {'chronic obstructive pulmonary disease report': "COPD",
-                                'asthma report': "asthma",
-                                'all cause dementia report': "dementia",
-                                'end stage renal disease report': "end_stage_renal_disease",
-                                'myocardial infarction': "myocardial_infarction",
-                                'all cause parkinsonism report': "parkinsonism",
-                                'stroke': "stroke"}
-
-        X = pd.read_csv(f"/projects/leelab3/nbbwang/UKB/small_dataset/%s/standardized_X_{split}.csv"%(outcomes_displayname[outcome]))
-        Y = pd.read_csv(f"/projects/leelab3/nbbwang/UKB/small_dataset/%s/y_{split}.csv"%(outcomes_displayname[outcome]))
-        self.col_names = X.columns
-        self.X = np.array(X).astype('float32')
-        self.feature_mapper = pickle.load(open('/projects/leelab3/nbbwang/UKB/small_dataset/feature_names_dictionary_DateToAge.pkl', 'rb'))
-
-        # print(self.X)
-        self.Y = np.array(Y).astype('int64')
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, index):
-        # print(self.Y[index].shape)
-        return self.X[index], self.Y[index][0]
-
-
 class DenseDatasetSelected(Dataset):
     def __init__(self, data_dir, feature_list=None, cols_to_drop=None):
         super().__init__()
