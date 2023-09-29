@@ -3,8 +3,8 @@ import setuptools
 setuptools.setup(
     name='DIME',
     version='0.0.1',
-    author='Soham Gadgil',
-    author_email='sgadgil@cs.washington.edu',
+    author='<anonymized>',
+    author_email='<anonymized>',
     description='CMI Estimation',
     long_description='''
         Dynamic feature selection by estimating conditional mutual information.
